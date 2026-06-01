@@ -8,7 +8,7 @@ const {
   SPEED_MAX, REDLINE, SPEED_DELTA, DECAY_PER_SEC, LS_KEY,
   clamp, rawCode, codeLabel, DEFAULT_BINDINGS,
   loadStore, saveStore, GRADE_SOUND,
-  PlayIcon, StopIcon, Speedometer, Lane,
+  PlayIcon, StopIcon, Speedometer, Lane, DynamicIsland,
 } = window;
 
 const GRADE_COLOR = {
@@ -123,6 +123,36 @@ function App() {
   const bindingsRef = uR(bindings);
   const soundRef = uR(sound);
   const listenRef = uR(null);
+  const [latestPR, setLatestPR] = uS(null);
+
+  uE(() => {
+    fetch('https://api.github.com/repos/zsksc-gen/mavuika-trainer/pulls?state=closed&base=main&sort=updated&direction=desc')
+      .then((res) => {
+        if (!res.ok) throw new Error('API limit or error');
+        return res.json();
+      })
+      .then((data) => {
+        const merged = data.find(pr => pr.merged_at);
+        if (merged) {
+          const date = new Date(merged.merged_at);
+          const timeStr = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+          setLatestPR({
+            number: merged.number,
+            title: merged.title,
+            url: merged.html_url,
+            timeStr: timeStr
+          });
+        }
+      })
+      .catch(() => {
+        setLatestPR({
+          number: '',
+          title: 'View GitHub updates',
+          url: 'https://github.com/zsksc-gen/mavuika-trainer/commits/main',
+          timeStr: 'main'
+        });
+      });
+  }, []);
 
   uE(() => { bindingsRef.current = bindings; }, [bindings]);
   uE(() => { soundRef.current = sound; saveStore(bindings, { ...init.settings, sound }); }, [sound, bindings]);
@@ -159,7 +189,26 @@ function App() {
     if (ev.action === action) {
       const delta = run.now - tReal;
       const ad = Math.abs(delta);
-      const g = ad <= WIN.perfect ? 'perfect' : ad <= WIN.good ? 'good' : (delta < 0 ? 'early' : 'late');
+      
+      const eventInRep = run.nextIdx % 8;
+      // 30% extra leniency for transition to the 2nd charge (index 4 of rep)
+      const scaleLeniency = (eventInRep === 4) ? 1.30 : 1.0;
+      const perfectWindow = WIN.perfect * scaleLeniency;
+      const goodWindow = WIN.good * scaleLeniency;
+      const g = ad <= perfectWindow ? 'perfect' : ad <= goodWindow ? 'good' : (delta < 0 ? 'early' : 'late');
+      
+      // Rubberbanding: if this is the start of a CD block (atk-down at index 0 or 4 of rep)
+      // and it was hit within the acceptable range (perfect/good), shift the subsequent inputs
+      const isAnchor = (eventInRep === 0 || eventInRep === 4);
+      if (isAnchor && (g === 'perfect' || g === 'good')) {
+        const anchorIdx = run.nextIdx;
+        for (let i = 1; i <= 3; i++) {
+          if (run.events[anchorIdx + i]) {
+            run.events[anchorIdx + i].t += delta * RATE;
+          }
+        }
+      }
+
       grade(g, delta); run.nextIdx++;
     } else {
       grade('wrong', 0);
@@ -182,8 +231,14 @@ function App() {
         if (now >= 0) {
           ensureEvents(Math.ceil((now * RATE) / REP_LEN) + 2);
           let ev;
-          while ((ev = run.events[run.nextIdx]) && now > ev.t / RATE + WIN.good + 70) {
-            grade('miss', 0); run.nextIdx++;
+          while ((ev = run.events[run.nextIdx])) {
+            const eventInRep = run.nextIdx % 8;
+            const goodWindow = WIN.good * (eventInRep === 4 ? 1.30 : 1.0);
+            if (now > ev.t / RATE + goodWindow + 70) {
+              grade('miss', 0); run.nextIdx++;
+            } else {
+              break;
+            }
           }
           run.speed = clamp(run.speed - DECAY_PER_SEC * dtSec, 0, SPEED_MAX);
         }
@@ -285,6 +340,34 @@ function App() {
 
   return (
     <div style={{ maxWidth: 880, margin: '0 auto', padding: '26px 24px 56px', display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <DynamicIsland running={running} />
+      
+      {/* GitHub Link (fixed far left, hidden when playing) */}
+      {!running && (
+        <a 
+          href="https://github.com/zsksc-gen/mavuika-trainer"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            position: 'fixed',
+            left: 24,
+            bottom: 24,
+            color: 'var(--text-muted)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9997,
+            transition: 'color 0.2s',
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
+          onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
+          title="GitHub Repository"
+        >
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+            <path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.24 6.839 9.504.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.464-1.11-1.464-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.579.688.481C19.137 20.24 22 16.42 22 12c0-5.523-4.477-10-10-10z" />
+          </svg>
+        </a>
+      )}
       {/* title */}
       <div style={{ textAlign: 'center' }}>
         <div style={{ fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 600, letterSpacing: '0.5em', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 2, paddingLeft: '0.5em' }}>Flamestrider Drill</div>
@@ -368,6 +451,15 @@ function App() {
           color: sound ? 'var(--text-primary)' : 'var(--text-muted)', fontSize: 17, display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>{sound ? '♪' : '✕'}</button>
       </div>
+
+      {/* latest update info */}
+      {!running && latestPR && (
+        <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--text-muted)', marginTop: 8, letterSpacing: '0.02em' }}>
+          LATEST UPDATE: <a href={latestPR.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-secondary)', textDecoration: 'none', borderBottom: '1px dashed var(--border-light)', fontWeight: 600 }}>
+            {latestPR.number ? `#${latestPR.number} ` : ''}{latestPR.title}
+          </a> ({latestPR.timeStr})
+        </div>
+      )}
     </div>
   );
 }

@@ -11,47 +11,19 @@ const { useState, useEffect, useRef, useCallback } = React;
    Hold B is the long one (waits out the spin charge) and its release
    is the Finisher (F). Times are ms-from-rep-start (user dwell data).
    --------------------------------------------------------------- */
-const REP_LEN = 2390; // match macro loop length (1640) + 750ms finisher animation delay
-// Bars: charge holds (attack) + dash taps. start/end in model ms.
-const REP_BARS = [
-  { lane: 'atk',  start: 0,   end: 320,  finisher: false },              // CD #1 charge
-  { lane: 'dash', start: 200, end: 250 },                                // dash tap inside #1
-  { lane: 'atk',  start: 370, end: 1640, finisher: true },               // CD #2 -> long hold -> F
-  { lane: 'dash', start: 570, end: 620 },                                // dash tap inside #2
-];
-// Flat event list (the things we grade), in time order.
-const REP_EVENTS = [
-  { action: 'atk-down', t: 0,    label: 'CHARGE' },
-  { action: 'dash-down', t: 200, label: 'DASH' },
-  { action: 'dash-up',  t: 250,  label: 'dash end' },
-  { action: 'atk-up',   t: 320,  label: 'cancel' },
-  { action: 'atk-down', t: 370,  label: 'CHARGE' },
-  { action: 'dash-down', t: 570, label: 'DASH' },
-  { action: 'dash-up',  t: 620,  label: 'dash end' },
-  { action: 'atk-up',   t: 1640, label: 'FINISHER' },
-];
+const {
+  TOL, SPEED_MAX, REDLINE, SPEED_DELTA, DECAY_PER_SEC,
+  REP_LEN, REP_BARS, REP_EVENTS
+} = window.VULCAN_CONFIG;
 
 const COMBO_NOTATION = 'CCDCDCF  2(CDCDCF)';
 
-/* Tolerance presets (real-ms windows, scaled by tempo separately) */
-const TOL = {
-  strict:  { perfect: 32, good: 64 },
-  normal:  { perfect: 55, good: 110 },
-  lenient: { perfect: 75, good: 160 },
-};
 const TEMPOS = [
   { label: '50%', rate: 0.50 },
   { label: '65%', rate: 0.65 },
   { label: '80%', rate: 0.80 },
   { label: '100%', rate: 1.0 },
 ];
-
-/* Speed / momentum model (km/h on the Flamestrider).
-   Hits build momentum quickly; mistakes bleed it. Tuned so a clean run
-   climbs into the redline and a single slip is recoverable, not fatal. */
-const SPEED_MAX = 220, REDLINE = 175;
-const SPEED_DELTA = { perfect: 22, good: 13, early: -16, late: -16, miss: -30, wrong: -12 };
-const DECAY_PER_SEC = 4;
 
 const LS_KEY = 'vulcan-trainer-v1';
 
