@@ -88,10 +88,10 @@ function DynamicIsland({ running }) {
     flexDirection: 'column',
     
     // Morph dimensions
-    width: expanded ? '560px' : '200px',
-    maxWidth: '90vw',
-    height: expanded ? '520px' : '38px',
-    maxHeight: '80vh',
+    width: expanded ? '840px' : '200px',
+    maxWidth: '95vw',
+    height: expanded ? '90vh' : '38px',
+    maxHeight: '95vh',
     borderRadius: expanded ? '24px' : '19px',
     padding: expanded ? '20px 24px' : '0 16px',
     cursor: expanded ? 'default' : 'pointer',
