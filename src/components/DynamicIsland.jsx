@@ -83,11 +83,11 @@ export default function DynamicIsland({ running }) {
     display: 'flex',
     flexDirection: 'column',
     
-    // Morph dimensions
+    // Morph dimensions (adjusted for 1.3x document zoom)
     width: expanded ? '840px' : '200px',
-    maxWidth: '95vw',
-    height: expanded ? '90vh' : '38px',
-    maxHeight: '95vh',
+    maxWidth: expanded ? '73vw' : '95vw',
+    height: expanded ? '68vh' : '38px',
+    maxHeight: expanded ? '70vh' : '95vh',
     borderRadius: expanded ? '24px' : '19px',
     padding: expanded ? '20px 24px' : '0 16px',
     cursor: expanded ? 'default' : 'pointer',

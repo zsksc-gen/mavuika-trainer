@@ -163,13 +163,19 @@ export default function App() {
     const tReal = ev.t / RATE;
     if (ev.action === action) {
       const delta = run.now - tReal;
-      const ad = Math.abs(delta);
-      
       const eventInRep = run.nextIdx % 8;
       // 30% extra leniency for transition to the 2nd charge (index 4 of rep)
       const scaleLeniency = (eventInRep === 4) ? 1.30 : 1.0;
-      const perfectWindow = WIN.perfect * scaleLeniency;
-      const goodWindow = WIN.good * scaleLeniency;
+      let perfectWindow = WIN.perfect * scaleLeniency;
+      let goodWindow = WIN.good * scaleLeniency;
+      
+      // Let the mistake of holding/tapping dash for too long through (late release leniency)
+      if (ev.action === 'dash-up' && delta > 0) {
+        perfectWindow += 70;
+        goodWindow += 70;
+      }
+      
+      const ad = Math.abs(delta);
       const g = ad <= perfectWindow ? 'perfect' : ad <= goodWindow ? 'good' : (delta < 0 ? 'early' : 'late');
       
       // Rubberbanding: if this is the start of a CD block (atk-down at index 0 or 4 of rep)
@@ -213,7 +219,10 @@ export default function App() {
           let ev;
           while ((ev = run.events[run.nextIdx])) {
             const eventInRep = run.nextIdx % 8;
-            const goodWindow = WIN.good * (eventInRep === 4 ? 1.30 : 1.0);
+            let goodWindow = WIN.good * (eventInRep === 4 ? 1.30 : 1.0);
+            if (ev.action === 'dash-up') {
+              goodWindow += 70;
+            }
             if (now > ev.t / RATE + goodWindow + 70) {
               grade('miss', 0);
               run.nextIdx++;

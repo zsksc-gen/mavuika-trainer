@@ -8,7 +8,7 @@ export const VULCAN_CONFIG = {
   },
 
   // Speed (km/h on the Flamestrider)
-  SPEED_MAX: 289,
+  SPEED_MAX: 299,
   REDLINE: 175,
   SPEED_DELTA: {
     perfect: 10,
