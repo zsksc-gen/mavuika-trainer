@@ -1,9 +1,4 @@
-/* =============================================================
-   VULCAN — trainer-config.js
-   Timing model, custom tolerances, and speed values.
-   Leniency is increased by 15% across strict, normal, and lenient.
-   ============================================================= */
-window.VULCAN_CONFIG = {
+export const VULCAN_CONFIG = {
   // Tolerance presets (real-ms windows, scaled by tempo separately)
   // Shift and Click leniency increased by 15%
   TOL: {

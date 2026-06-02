@@ -1,11 +1,7 @@
-/* =============================================================
-   VULCAN — dynamic-island.jsx
-   A sleek, minimalist bottom-center Dynamic Island.
-   Presents tutorials and credits in 2 sub-tabs parsed from tutorials.md.
-   ============================================================= */
-const { useState, useEffect, useRef } = React;
+import React, { useState, useEffect, useRef } from 'react';
+import { marked } from 'marked';
 
-function DynamicIsland({ running }) {
+export default function DynamicIsland({ running }) {
   const [expanded, setExpanded] = useState(false);
   const [tutContent, setTutContent] = useState('');
   const [credContent, setCredContent] = useState('');
@@ -33,8 +29,8 @@ function DynamicIsland({ running }) {
     const renderMD = (mdText) => {
       if (!mdText) return '';
       let html = parseYT(mdText);
-      if (window.marked) {
-        const renderer = new window.marked.Renderer();
+      if (marked) {
+        const renderer = new marked.Renderer();
         renderer.link = (first, title, text) => {
           let href = first;
           if (first && typeof first === 'object') {
@@ -44,7 +40,7 @@ function DynamicIsland({ running }) {
           }
           return `<a href="${href || ''}" target="_blank" rel="noopener noreferrer" title="${title || ''}">${text || ''}</a>`;
         };
-        return window.marked.parse(html, { renderer });
+        return marked.parse(html, { renderer });
       }
       // Fallback simple markdown link parser: [text](url) -> <a href="url">text</a>
       const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
@@ -232,5 +228,3 @@ function DynamicIsland({ running }) {
     </>
   );
 }
-
-window.DynamicIsland = DynamicIsland;
