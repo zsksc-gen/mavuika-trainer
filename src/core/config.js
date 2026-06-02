@@ -20,8 +20,8 @@ export const VULCAN_CONFIG = {
   },
   DECAY_PER_SEC: 2,
 
-  // Loop timings (aligned with macro + 750ms finisher animation delay)
-  REP_LEN: 2390,
+  // Loop timings (aligned with macro + 520ms finisher animation delay)
+  REP_LEN: 2160,
   REP_BARS: [
     { lane: "atk", start: 0, end: 320, finisher: false }, // CD #1 charge
     { lane: "dash", start: 200, end: 250 }, // dash tap inside #1

@@ -20,7 +20,7 @@ const SEQ = [
   { sym: '▼', side: 'L', dwell: 200 },
   { sym: '▼', side: 'R', dwell: 50 },
   { sym: '▲', side: 'R', dwell: 1020 },
-  { sym: '▲', side: 'L', dwell: 750 },
+  { sym: '▲', side: 'L', dwell: 520 },
 ];
 
 export default function App() {
@@ -35,6 +35,7 @@ export default function App() {
   const [listen, setListen] = useState(null);
   const [streak, setStreak] = useState(0);
   const [topSpeed, setTopSpeed] = useState(0);
+  const [grades, setGrades] = useState([]);
   const streakRef = useRef(0);
   const topRef = useRef(0);
 
@@ -106,6 +107,19 @@ export default function App() {
     listenRef.current = listen;
   }, [listen]);
 
+  useEffect(() => {
+    if (grades.length === 0) return;
+    const timer = setInterval(() => {
+      const now = performance.now();
+      setGrades(prev => {
+        const filtered = prev.filter(item => now - item.ts < 5000);
+        if (filtered.length !== prev.length) return filtered;
+        return prev;
+      });
+    }, 200);
+    return () => clearInterval(timer);
+  }, [grades]);
+
   const ensureEvents = (maxRep) => {
     const run = runRef.current;
     while (run.genRep <= maxRep) {
@@ -118,7 +132,8 @@ export default function App() {
   const grade = (g, delta) => {
     const run = runRef.current;
     run.speed = clamp(run.speed + (SPEED_DELTA[g] || 0), 0, SPEED_MAX);
-    lastRef.current = { grade: g, delta, ts: performance.now() };
+    const ts = performance.now();
+    lastRef.current = { grade: g, delta, ts };
     // momentum streak: clean hits build it, mistakes break it
     if (g === 'perfect' || g === 'good') streakRef.current += 1;
     else streakRef.current = 0;
@@ -129,6 +144,15 @@ export default function App() {
     }
     if (soundRef.current && GRADE_SOUND[g]) GRADE_SOUND[g]();
     setLast(lastRef.current);
+    
+    // Add to grades stack for the 5s persistent log
+    const newGrade = {
+      id: Math.random().toString(36).substr(2, 9),
+      grade: g,
+      delta,
+      ts
+    };
+    setGrades(prev => [...prev, newGrade]);
   };
 
   const transition = (action) => {
@@ -227,6 +251,7 @@ export default function App() {
     ensureEvents(4);
     lastRef.current = null;
     setLast(null);
+    setGrades([]);
     setPressed({ atk: false, dash: false });
     streakRef.current = 0;
     topRef.current = 0;
@@ -409,7 +434,7 @@ export default function App() {
           )}
         </div>
         <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 7, textAlign: 'center' }}>
-          Hold <b style={{ color: 'var(--text-secondary)' }}>{codeLabel(bindings.attack)}</b> across each charge bar; tap <b style={{ color: 'var(--text-secondary)' }}>{codeLabel(bindings.dash)}</b> inside it. Mouse input works over this strip.
+          Hold <b style={{ color: 'var(--text-secondary)' }}>{codeLabel(bindings.attack)}</b> across each charge bar; tap <b style={{ color: 'var(--text-secondary)' }}>{codeLabel(bindings.dash)}</b> inside it. <b style={{ color: 'var(--severity-critical)', fontWeight: '700' }}>Mouse input works over this strip.</b>
         </div>
       </div>
 
@@ -424,12 +449,43 @@ export default function App() {
           </div>
           <Speedometer speed={speed} running={running} />
           {/* grade readout under the dial */}
-          <div style={{ textAlign: 'center', marginTop: -4, height: 24 }}>
-            {liveFlash && (
-              <span style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 700, letterSpacing: '0.14em', color: lc, textTransform: 'uppercase' }}>
-                {GRADE_TEXT[last.grade]}{showDelta ? `  ${last.delta > 0 ? '+' : ''}${Math.round(last.delta)}ms` : ''}
-              </span>
-            )}
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: 4,
+            height: 96,
+            marginTop: 6,
+            borderTop: '1px solid var(--border-subtle)',
+            paddingTop: 8,
+            overflow: 'hidden'
+          }}>
+            {grades.slice(-4).map((item) => {
+              const color = GRADE_COLOR[item.grade];
+              const text = GRADE_TEXT[item.grade];
+              const showMs = ['perfect', 'good', 'early', 'late'].includes(item.grade);
+              const msText = showMs ? ` ${item.delta > 0 ? '+' : ''}${Math.round(item.delta)}ms` : '';
+              return (
+                <div
+                  key={item.id}
+                  style={{
+                    fontFamily: 'var(--font-display)',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    letterSpacing: '0.1em',
+                    color: color,
+                    textTransform: 'uppercase',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
+                >
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: color }} />
+                  <span>{text}{msText}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
         <div style={{ position: 'relative', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -441,7 +497,7 @@ export default function App() {
       </div>
 
       {/* start / stop + sound */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, marginTop: 20 }}>
         <button onClick={running ? stop : start} style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '15px 46px',
           fontSize: 16, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: '0.16em',
