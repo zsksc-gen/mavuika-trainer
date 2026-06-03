@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { VULCAN_CONFIG } from './core/config';
+import { VULCAN_CONFIG, COMBOS } from './core/config';
 import { clamp, rawCode, codeLabel, loadStore, saveStore } from './core/utils';
 import { GRADE_SOUND } from './core/audio';
 import { GRADE_COLOR, GRADE_TEXT } from './core/tokens';
@@ -9,19 +9,193 @@ import Lane from './components/Lane';
 import DynamicIsland from './components/DynamicIsland';
 import { MouseOverlay, Stat } from './components/MouseOverlay';
 
-const COMBO_NOTATION = 'CCDCDCF  2(CDCDCF)';
 
-/* 8-step sequence reference (matches the canonical DCDCCF rep) */
-const SEQ = [
-  { sym: '▼', side: 'L', dwell: 200 },
-  { sym: '▼', side: 'R', dwell: 50 },
-  { sym: '▲', side: 'R', dwell: 70 },
-  { sym: '▲', side: 'L', dwell: 50 },
-  { sym: '▼', side: 'L', dwell: 200 },
-  { sym: '▼', side: 'R', dwell: 50 },
-  { sym: '▲', side: 'R', dwell: 1020 },
-  { sym: '▲', side: 'L', dwell: 520 },
-];
+
+function AnalyticsReport({ show, onClose, gradesLog, speedHistory, speedMax, redline }) {
+  if (!show) return null;
+
+  const totalHits = gradesLog.length;
+  const gradeCounts = gradesLog.reduce((acc, curr) => {
+    acc[curr.grade] = (acc[curr.grade] || 0) + 1;
+    return acc;
+  }, { perfect: 0, good: 0, early: 0, late: 0, miss: 0, wrong: 0 });
+
+  const validHits = gradesLog.filter(g => ['perfect', 'good', 'early', 'late'].includes(g.grade));
+  const avgOffset = validHits.length > 0
+    ? Math.round(validHits.reduce((acc, curr) => acc + Math.abs(curr.delta), 0) / validHits.length)
+    : 0;
+
+  let pointsStr = '';
+  if (speedHistory.length > 1) {
+    const minTime = speedHistory[0].time;
+    const maxTime = speedHistory[speedHistory.length - 1].time || 1;
+    const timeSpan = maxTime - minTime || 1;
+
+    pointsStr = speedHistory.map((pt) => {
+      const x = ((pt.time - minTime) / timeSpan) * 280 + 10;
+      const y = 90 - (pt.speed / speedMax) * 80;
+      return `${x},${y}`;
+    }).join(' ');
+  }
+
+  return (
+    <div 
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(255, 255, 255, 0.7)',
+        backdropFilter: 'blur(10px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 10000,
+        animation: 'fadeIn 0.25s ease-out',
+        color: 'var(--text-primary)'
+      }}
+    >
+      <div 
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border-light)',
+          width: 640,
+          maxWidth: '92vw',
+          padding: 30,
+          borderRadius: 16,
+          boxShadow: '0 20px 40px rgba(0, 0, 0, 0.08)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 20
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-light)', paddingBottom: 14 }}>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 22, letterSpacing: '0.04em', textTransform: 'uppercase' }}>Performance Report</h2>
+          <button 
+            onClick={onClose}
+            style={{
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border-light)',
+              borderRadius: '50%',
+              width: 30,
+              height: 30,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 14,
+              fontWeight: 600,
+              color: 'var(--text-primary)'
+            }}
+          >✕</button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+          {/* Stats breakdown */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <h3 style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Timing Metrics</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, borderBottom: '1px solid var(--border-subtle)', paddingBottom: 4 }}>
+                <span>Accuracy Consistency</span>
+                <span style={{ fontWeight: 600, color: avgOffset <= 50 ? 'var(--severity-low)' : 'var(--text-primary)' }}>
+                  {totalHits > 0 ? `${avgOffset} ms` : '—'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, borderBottom: '1px solid var(--border-subtle)', paddingBottom: 4 }}>
+                <span>Total Evaluated Actions</span>
+                <span style={{ fontWeight: 600 }}>{totalHits}</span>
+              </div>
+            </div>
+            {/* Grade list */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
+              {['perfect', 'good', 'early', 'late', 'miss', 'wrong'].map((g) => {
+                const count = gradeCounts[g];
+                const label = g.toUpperCase();
+                const color = GRADE_COLOR[g];
+                return (
+                  <div key={g} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '6px 12px',
+                    background: 'var(--bg-secondary)',
+                    border: '1px solid var(--border-light)',
+                    fontSize: 11,
+                    fontWeight: 600
+                  }}>
+                    <span style={{ color, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: color }} />
+                      {label}
+                    </span>
+                    <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{count}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Speed Chart */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <h3 style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Speed Profile (KM/H)</h3>
+            <div style={{
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border-light)',
+              height: 140,
+              position: 'relative',
+              borderRadius: 8,
+              overflow: 'hidden'
+            }}>
+              {speedHistory.length > 1 ? (
+                <svg width="100%" height="100%" viewBox="0 0 300 100" preserveAspectRatio="none">
+                  {/* Grid Lines */}
+                  <line x1="0" y1="90" x2="300" y2="90" stroke="var(--border-light)" strokeWidth="1" strokeDasharray="3,3" />
+                  <line x1="0" y1="50" x2="300" y2="50" stroke="var(--border-light)" strokeWidth="1" strokeDasharray="3,3" />
+                  <line x1="0" y1="10" x2="300" y2="10" stroke="var(--border-light)" strokeWidth="1" strokeDasharray="3,3" />
+                  <text x="5" y="86" fontSize="7" fill="var(--text-muted)">0</text>
+                  <text x="5" y="46" fontSize="7" fill="var(--text-muted)">{Math.round(speedMax / 2)}</text>
+                  <text x="5" y="16" fontSize="7" fill="var(--text-muted)">{speedMax}</text>
+                  {/* Speed Line */}
+                  <polyline
+                    fill="none"
+                    stroke="var(--severity-critical)"
+                    strokeWidth="2.5"
+                    points={pointsStr}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              ) : (
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: 'var(--text-muted)' }}>
+                  No speed data collected
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <button 
+          onClick={onClose}
+          style={{
+            background: 'var(--text-primary)',
+            color: 'var(--bg-primary)',
+            border: 'none',
+            padding: '12px 0',
+            fontFamily: 'var(--font-display)',
+            fontSize: 14,
+            fontWeight: 700,
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+            cursor: 'pointer',
+            marginTop: 10,
+            transition: 'opacity 0.2s'
+          }}
+        >
+          Confirm & Close
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function App() {
   const init = loadStore();
@@ -36,10 +210,77 @@ export default function App() {
   const [streak, setStreak] = useState(0);
   const [topSpeed, setTopSpeed] = useState(0);
   const [grades, setGrades] = useState([]);
+  const [gradesLog, setGradesLog] = useState([]);
+  const [speedHistory, setSpeedHistory] = useState([]);
+  const [showReport, setShowReport] = useState(false);
   const streakRef = useRef(0);
   const topRef = useRef(0);
 
-  const { REP_LEN, REP_EVENTS, SPEED_MAX, REDLINE, SPEED_DELTA, DECAY_PER_SEC, TOL } = VULCAN_CONFIG;
+  const [comboKey, setComboKey] = useState('cdcdcf');
+  const [cdMultiplier, setCdMultiplier] = useState(2); // 1 = CD, 2 = CDCD
+
+  const activeCombo = (() => {
+    const base = COMBOS[comboKey] || COMBOS.cdcdcf;
+    if (comboKey === 'cd') {
+      const repBars = [
+        { lane: "atk", start: 0, end: 320, finisher: false },
+        { lane: "dash", start: 200, end: 250 }
+      ];
+      const repEvents = [
+        { action: "atk-down", t: 0, label: "CHARGE" },
+        { action: "dash-down", t: 200, label: "DASH" },
+        { action: "dash-up", t: 250, label: "dash end" },
+        { action: "atk-up", t: 320, label: "cancel" }
+      ];
+      const seq = [
+        { sym: '▼', side: 'L', dwell: 200 },
+        { sym: '▼', side: 'R', dwell: 50 },
+        { sym: '▲', side: 'R', dwell: 70 }
+      ];
+
+      if (cdMultiplier === 2) {
+        seq.push({ sym: '▲', side: 'L', dwell: 50 });
+        repBars.push(
+          { lane: "atk", start: 370, end: 690, finisher: false },
+          { lane: "dash", start: 570, end: 620 }
+        );
+        repEvents.push(
+          { action: "atk-down", t: 370, label: "CHARGE" },
+          { action: "dash-down", t: 570, label: "DASH" },
+          { action: "dash-up", t: 620, label: "dash end" },
+          { action: "atk-up", t: 690, label: "cancel" }
+        );
+        seq.push(
+          { sym: '▼', side: 'L', dwell: 200 },
+          { sym: '▼', side: 'R', dwell: 50 },
+          { sym: '▲', side: 'R', dwell: 70 },
+          { sym: '▲', side: 'L', dwell: 1000 }
+        );
+      } else {
+        seq.push({ sym: '▲', side: 'L', dwell: 1000 });
+      }
+
+      const repLen = cdMultiplier === 2 ? 1690 : 1320;
+
+      return {
+        ...base,
+        name: cdMultiplier === 1 ? "CD (Short Loop)" : "CDCD (Short Loop)",
+        notation: cdMultiplier === 1 ? "CD (Spaced 1s)" : "CDCD (Spaced 1s)",
+        repLen,
+        repBars,
+        repEvents,
+        seq
+      };
+    }
+    return base;
+  })();
+
+  const SEQ = activeCombo.seq;
+  const COMBO_NOTATION = activeCombo.notation;
+  const REP_LEN = activeCombo.repLen;
+  const REP_EVENTS = activeCombo.repEvents;
+
+  const { SPEED_MAX, REDLINE, SPEED_DELTA, DECAY_PER_SEC, TOL } = VULCAN_CONFIG;
   const RATE = 1.0;
   const WIN = TOL.normal;
 
@@ -55,7 +296,10 @@ export default function App() {
     speed: 0,
     pressed: new Set(),
     atk: false,
-    dash: false
+    dash: false,
+    gradesLog: [],
+    speedHistory: [],
+    lastRecordTime: 0
   });
   const lastRef = useRef(null);
   const cdRef = useRef(0);
@@ -153,6 +397,16 @@ export default function App() {
       ts
     };
     setGrades(prev => [...prev, newGrade]);
+
+    // Record to gradesLog ref for after action report
+    if (run.running) {
+      run.gradesLog = run.gradesLog || [];
+      run.gradesLog.push({
+        grade: g,
+        delta,
+        ts
+      });
+    }
   };
 
   const transition = (action) => {
@@ -163,7 +417,7 @@ export default function App() {
     const tReal = ev.t / RATE;
     if (ev.action === action) {
       const delta = run.now - tReal;
-      const eventInRep = run.nextIdx % 8;
+      const eventInRep = run.nextIdx % REP_EVENTS.length;
       // 30% extra leniency for transition to the 2nd charge (index 4 of rep)
       const scaleLeniency = (eventInRep === 4) ? 1.30 : 1.0;
       let perfectWindow = WIN.perfect * scaleLeniency;
@@ -216,9 +470,17 @@ export default function App() {
         const dtSec = frameDelta / 1000;
         if (now >= 0) {
           ensureEvents(Math.ceil((now * RATE) / REP_LEN) + 2);
+          
+          // Sample speed for analytics graph
+          if (now - run.lastRecordTime >= 100) {
+            run.speedHistory = run.speedHistory || [];
+            run.speedHistory.push({ time: now, speed: run.speed });
+            run.lastRecordTime = now;
+          }
+
           let ev;
           while ((ev = run.events[run.nextIdx])) {
-            const eventInRep = run.nextIdx % 8;
+            const eventInRep = run.nextIdx % REP_EVENTS.length;
             let goodWindow = WIN.good * (eventInRep === 4 ? 1.30 : 1.0);
             if (ev.action === 'dash-up') {
               goodWindow += 70;
@@ -257,10 +519,16 @@ export default function App() {
     run.pressed = new Set();
     run.atk = false;
     run.dash = false;
+    run.gradesLog = [];
+    run.speedHistory = [{ time: 0, speed: 0 }];
+    run.lastRecordTime = 0;
     ensureEvents(4);
     lastRef.current = null;
     setLast(null);
     setGrades([]);
+    setGradesLog([]);
+    setSpeedHistory([]);
+    setShowReport(false);
     setPressed({ atk: false, dash: false });
     streakRef.current = 0;
     topRef.current = 0;
@@ -277,6 +545,9 @@ export default function App() {
   const stop = () => {
     runRef.current.running = false;
     setRunning(false);
+    setGradesLog([...runRef.current.gradesLog]);
+    setSpeedHistory([...runRef.current.speedHistory]);
+    setShowReport(true);
   };
 
   // ---- input handling ----
@@ -411,6 +682,87 @@ export default function App() {
         <div style={{ display: 'inline-block', marginTop: 10, padding: '5px 18px', border: '1px solid var(--border-light)', fontFamily: 'var(--font-display)', fontSize: 17, letterSpacing: '0.16em', color: 'var(--text-secondary)' }}>{COMBO_NOTATION}</div>
       </div>
 
+      {/* combo selection buttons (only visible when not running) */}
+      {!running && (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginTop: -4 }}>
+            {Object.entries(COMBOS).map(([key, item]) => {
+              const isActive = comboKey === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setComboKey(key)}
+                  style={{
+                    background: isActive ? 'var(--text-primary)' : 'var(--bg-secondary)',
+                    color: isActive ? 'var(--bg-primary)' : 'var(--text-secondary)',
+                    border: `1px solid ${isActive ? 'var(--text-primary)' : 'var(--border-light)'}`,
+                    padding: '6px 14px',
+                    fontFamily: 'var(--font-display)',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    letterSpacing: '0.04em',
+                    textTransform: 'uppercase',
+                    cursor: 'pointer',
+                    borderRadius: 4,
+                    transition: 'all 0.15s'
+                  }}
+                >
+                  {item.name}
+                </button>
+              );
+            })}
+          </div>
+          {comboKey === 'cd' && (
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'center', 
+              alignItems: 'center', 
+              gap: 12, 
+              padding: '6px 12px',
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border-light)',
+              borderRadius: 6,
+              animation: 'fadeIn 0.2s ease-out'
+            }}>
+              <span style={{ 
+                fontSize: 10, 
+                fontWeight: 700, 
+                color: 'var(--text-muted)', 
+                letterSpacing: '0.08em', 
+                textTransform: 'uppercase' 
+              }}>
+                Multiplier:
+              </span>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {[1, 2].map((num) => {
+                  const active = cdMultiplier === num;
+                  return (
+                    <button
+                      key={num}
+                      onClick={() => setCdMultiplier(num)}
+                      style={{
+                        background: active ? 'var(--text-primary)' : 'var(--bg-secondary)',
+                        color: active ? 'var(--bg-primary)' : 'var(--text-secondary)',
+                        border: `1px solid ${active ? 'var(--text-primary)' : 'var(--border-subtle)'}`,
+                        padding: '3px 10px',
+                        fontFamily: 'var(--font-display)',
+                        fontSize: 10,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        borderRadius: 3,
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      {num === 1 ? '1x (CD)' : '2x (CDCD)'}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* sequence reference */}
       <div style={{ display: 'flex', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>
         {SEQ.map((s, i) => {
@@ -435,7 +787,7 @@ export default function App() {
           </span>
         </div>
         <div ref={stageRef} tabIndex={0} className="stage-focus" style={{ position: 'relative', cursor: running ? 'crosshair' : 'default' }}>
-          <Lane nowRef={nowRef} rate={RATE} judgeFlash={liveFlash} />
+          <Lane nowRef={nowRef} rate={RATE} judgeFlash={liveFlash} repLen={REP_LEN} repBars={activeCombo.repBars} />
           {running && countdown > 0 && (
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
               <span style={{ fontFamily: 'var(--font-display)', fontSize: 72, fontWeight: 700, color: 'var(--severity-high)' }}>{countdown}</span>
@@ -530,6 +882,15 @@ export default function App() {
           </a> ({latestPR.timeStr})
         </div>
       )}
+
+      <AnalyticsReport 
+        show={showReport} 
+        onClose={() => setShowReport(false)} 
+        gradesLog={gradesLog} 
+        speedHistory={speedHistory} 
+        speedMax={SPEED_MAX}
+        redline={REDLINE}
+      />
     </div>
   );
 }

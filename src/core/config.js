@@ -8,7 +8,7 @@ export const VULCAN_CONFIG = {
   },
 
   // Speed (km/h on the Flamestrider)
-  SPEED_MAX: 299,
+  SPEED_MAX: 289,
   REDLINE: 175,
   SPEED_DELTA: {
     perfect: 10,
@@ -19,23 +19,59 @@ export const VULCAN_CONFIG = {
     wrong: -8,
   },
   DECAY_PER_SEC: 2,
+};
 
-  // Loop timings (aligned with macro + 520ms finisher animation delay)
-  REP_LEN: 2160,
-  REP_BARS: [
-    { lane: "atk", start: 0, end: 320, finisher: false }, // CD #1 charge
-    { lane: "dash", start: 200, end: 250 }, // dash tap inside #1
-    { lane: "atk", start: 370, end: 1640, finisher: true }, // CD #2 -> long hold -> F
-    { lane: "dash", start: 570, end: 620 }, // dash tap inside #2
-  ],
-  REP_EVENTS: [
-    { action: "atk-down", t: 0, label: "CHARGE" },
-    { action: "dash-down", t: 200, label: "DASH" },
-    { action: "dash-up", t: 250, label: "dash end" },
-    { action: "atk-up", t: 320, label: "cancel" },
-    { action: "atk-down", t: 370, label: "CHARGE" },
-    { action: "dash-down", t: 570, label: "DASH" },
-    { action: "dash-up", t: 620, label: "dash end" },
-    { action: "atk-up", t: 1640, label: "FINISHER" },
-  ],
+export const COMBOS = {
+  cdcdcf: {
+    name: "CDCDCF (Full Combo)",
+    notation: "CCDCDCF  2(CDCDCF)",
+    repLen: 2160,
+    repBars: [
+      { lane: "atk", start: 0, end: 320, finisher: false }, // CD #1 charge
+      { lane: "dash", start: 200, end: 250 }, // dash tap inside #1
+      { lane: "atk", start: 370, end: 1640, finisher: true }, // CD #2 -> long hold -> F
+      { lane: "dash", start: 570, end: 620 }, // dash tap inside #2
+    ],
+    repEvents: [
+      { action: "atk-down", t: 0, label: "CHARGE" },
+      { action: "dash-down", t: 200, label: "DASH" },
+      { action: "dash-up", t: 250, label: "dash end" },
+      { action: "atk-up", t: 320, label: "cancel" },
+      { action: "atk-down", t: 370, label: "CHARGE" },
+      { action: "dash-down", t: 570, label: "DASH" },
+      { action: "dash-up", t: 620, label: "dash end" },
+      { action: "atk-up", t: 1640, label: "FINISHER" },
+    ],
+    seq: [
+      { sym: '▼', side: 'L', dwell: 200 },
+      { sym: '▼', side: 'R', dwell: 50 },
+      { sym: '▲', side: 'R', dwell: 70 },
+      { sym: '▲', side: 'L', dwell: 50 },
+      { sym: '▼', side: 'L', dwell: 200 },
+      { sym: '▼', side: 'R', dwell: 50 },
+      { sym: '▲', side: 'R', dwell: 1020 },
+      { sym: '▲', side: 'L', dwell: 520 },
+    ]
+  },
+  cd: {
+    name: "CD (Short Loop)",
+    notation: "CD (Spaced 1s)",
+    repLen: 1320,
+    repBars: [
+      { lane: "atk", start: 0, end: 320, finisher: false }, // CD #1 charge
+      { lane: "dash", start: 200, end: 250 }, // dash tap inside #1
+    ],
+    repEvents: [
+      { action: "atk-down", t: 0, label: "CHARGE" },
+      { action: "dash-down", t: 200, label: "DASH" },
+      { action: "dash-up", t: 250, label: "dash end" },
+      { action: "atk-up", t: 320, label: "cancel" },
+    ],
+    seq: [
+      { sym: '▼', side: 'L', dwell: 200 },
+      { sym: '▼', side: 'R', dwell: 50 },
+      { sym: '▲', side: 'R', dwell: 70 },
+      { sym: '▲', side: 'L', dwell: 1000 },
+    ]
+  }
 };

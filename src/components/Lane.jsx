@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
-import { VULCAN_CONFIG } from '../core/config';
 import { VB, GRADE_COLOR } from '../core/tokens';
 
 const PX_PER_MS = 0.26;
 
-export default function Lane({ nowRef, rate, judgeFlash }) {
-  const { REP_LEN, REP_BARS } = VULCAN_CONFIG;
+export default function Lane({ nowRef, rate, judgeFlash, repLen, repBars }) {
+  const REP_LEN = repLen;
+  const REP_BARS = repBars;
   const wrapRef = useRef(null);
   const [w, setW] = useState(900);
   const innerRef = useRef(null);

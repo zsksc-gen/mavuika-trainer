@@ -142,3 +142,19 @@ h3 {
   box-shadow: none;
   font-family: var(--font-body);
 }
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Specific to overlay transitions */
+div[style*="position: fixed"][style*="inset: 0"] {
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
