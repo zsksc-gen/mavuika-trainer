@@ -310,6 +310,7 @@ export default function App() {
   const bindingsRef = useRef(bindings);
   const soundRef = useRef(sound);
   const listenRef = useRef(null);
+  const videoRef = useRef(null);
   const [latestPR, setLatestPR] = useState(null);
 
   useEffect(() => {
@@ -381,6 +382,25 @@ export default function App() {
     }, 200);
     return () => clearInterval(timer);
   }, [grades]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (speed === 0) {
+      if (!video.paused) {
+        video.pause();
+      }
+    } else {
+      // 1-299 is 0% to 300% speed.
+      const rate = ((speed - 1) / 298) * 3.0;
+      const clampedRate = clamp(rate, 0.0625, 3.0);
+      video.playbackRate = clampedRate;
+      if (video.paused) {
+        video.play().catch(() => {});
+      }
+    }
+  }, [speed]);
 
   const ensureEvents = (maxRep) => {
     const run = runRef.current;
@@ -953,7 +973,23 @@ export default function App() {
           </div>
         </div>
         <div style={{ position: 'relative', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <img src="assets/mavuika-dance.gif" alt="Mavuika" style={{ width: 112, height: 112, display: 'block', position: 'relative', transform: `scale(${scale})`, transformOrigin: 'bottom center', transition: 'transform 0.2s' }} />
+          <video
+            ref={videoRef}
+            src="assets/mavuika-dance.webm"
+            loop
+            muted
+            playsInline
+            style={{
+              width: 112,
+              height: 112,
+              display: 'block',
+              position: 'relative',
+              transform: `scale(${scale})`,
+              transformOrigin: 'bottom center',
+              transition: 'transform 0.2s',
+              objectFit: 'cover'
+            }}
+          />
           <a href="https://x.com/greentoko/status/1831841462839079241" target="_blank" rel="noopener noreferrer" style={{ fontSize: 9, color: '#0066cc', textDecoration: 'none', marginTop: 4, cursor: 'pointer' }}>
             @GreenToko
           </a>
