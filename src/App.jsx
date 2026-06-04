@@ -299,6 +299,8 @@ export default function App() {
     pressed: new Set(),
     atk: false,
     dash: false,
+    gpAtkPressed: false,
+    gpDashPressed: false,
     gradesLog: [],
     speedHistory: [],
     lastRecordTime: 0,
@@ -312,6 +314,36 @@ export default function App() {
   const listenRef = useRef(null);
   const videoRef = useRef(null);
   const [latestPR, setLatestPR] = useState(null);
+  const [gamepadConnected, setGamepadConnected] = useState(false);
+
+  useEffect(() => {
+    const checkGamepads = () => {
+      const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+      let found = false;
+      for (let i = 0; i < gamepads.length; i++) {
+        if (gamepads[i]) {
+          setGamepadConnected(true);
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        setGamepadConnected(false);
+      }
+    };
+
+    window.addEventListener('gamepadconnected', checkGamepads);
+    window.addEventListener('gamepaddisconnected', checkGamepads);
+    
+    checkGamepads();
+    const interval = setInterval(checkGamepads, 1000);
+
+    return () => {
+      window.removeEventListener('gamepadconnected', checkGamepads);
+      window.removeEventListener('gamepaddisconnected', checkGamepads);
+      clearInterval(interval);
+    };
+  }, []);
 
   useEffect(() => {
     fetch('https://api.github.com/repos/zsksc-gen/mavuika-trainer/pulls?state=closed&base=main&sort=updated&direction=desc')
@@ -508,6 +540,91 @@ export default function App() {
     const loop = () => {
       const t = performance.now();
       const run = runRef.current;
+
+      // Poll Gamepad
+      const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+      let gp = null;
+      for (let i = 0; i < gamepads.length; i++) {
+        if (gamepads[i]) {
+          gp = gamepads[i];
+          break;
+        }
+      }
+
+      if (gp) {
+        const b = bindingsRef.current;
+
+        // Controller Rebinding Check
+        if (listenRef.current === 'gpAttack' || listenRef.current === 'gpDash') {
+          for (let buttonIdx = 0; buttonIdx < gp.buttons.length; buttonIdx++) {
+            if (gp.buttons[buttonIdx]?.pressed) {
+              const action = listenRef.current;
+              const code = 'GP' + buttonIdx;
+              const nb = { ...bindingsRef.current, [action]: code };
+              const other = action === 'gpAttack' ? 'gpDash' : 'gpAttack';
+              if (nb[other] === code) nb[other] = bindingsRef.current[action];
+              setBindings(nb);
+              setListen(null);
+              break;
+            }
+          }
+        } else {
+          // Gameplay Polling
+          const getGpBtnIndex = (bindStr) => {
+            if (bindStr && bindStr.startsWith('GP')) {
+              return parseInt(bindStr.slice(2));
+            }
+            return -1;
+          };
+
+          const atkIdx = getGpBtnIndex(b.gpAttack);
+          const dashIdx = getGpBtnIndex(b.gpDash);
+
+          const atkPressed = atkIdx !== -1 && gp.buttons[atkIdx]?.pressed;
+          const dashPressed = dashIdx !== -1 && gp.buttons[dashIdx]?.pressed;
+
+          // Gamepad Attack button transition
+          if (atkPressed && !run.gpAtkPressed) {
+            run.gpAtkPressed = true;
+            if (!run.atk) {
+              run.atk = true;
+              setPressed(p => ({ ...p, atk: true }));
+              transition('atk-down');
+            }
+          } else if (!atkPressed && run.gpAtkPressed) {
+            run.gpAtkPressed = false;
+            const kbCode = b.attack;
+            const kbPressed = run.pressed.has(kbCode);
+            if (!kbPressed && run.atk) {
+              run.atk = false;
+              setPressed(p => ({ ...p, atk: false }));
+              transition('atk-up');
+            }
+          }
+
+          // Gamepad Dash button transition
+          if (dashPressed && !run.gpDashPressed) {
+            run.gpDashPressed = true;
+            if (!run.dash) {
+              run.dash = true;
+              setPressed(p => ({ ...p, dash: true }));
+              transition('dash-down');
+            }
+          } else if (!dashPressed && run.gpDashPressed) {
+            run.gpDashPressed = false;
+            const kbCode = b.dash;
+            const kbPressed = run.pressed.has(kbCode) || 
+              ((kbCode === 'ShiftLeft' || kbCode === 'ShiftRight' || kbCode === 'M2') && 
+               (run.pressed.has('ShiftLeft') || run.pressed.has('ShiftRight') || run.pressed.has('M2')));
+            if (!kbPressed && run.dash) {
+              run.dash = false;
+              setPressed(p => ({ ...p, dash: false }));
+              transition('dash-up');
+            }
+          }
+        }
+      }
+
       if (run.running) {
         if (run.lastT == null) run.lastT = t;
         let frameDelta = t - run.lastT;
@@ -652,11 +769,15 @@ export default function App() {
           e.preventDefault();
           const code = rawCode(e);
           const action = listenRef.current;
-          const nb = { ...bindingsRef.current, [action]: code };
-          const other = action === 'attack' ? 'dash' : 'attack';
-          if (nb[other] === code) nb[other] = bindingsRef.current[action];
-          setBindings(nb);
-          setListen(null);
+          
+          // Only rebind keyboard/mouse actions using keyboard/mouse inputs
+          if (action === 'attack' || action === 'dash') {
+            const nb = { ...bindingsRef.current, [action]: code };
+            const other = action === 'attack' ? 'dash' : 'attack';
+            if (nb[other] === code) nb[other] = bindingsRef.current[action];
+            setBindings(nb);
+            setListen(null);
+          }
         }
         return;
       }
@@ -673,25 +794,29 @@ export default function App() {
         run.pressed.add(code);
         if (isAtkKey && !run.atk) {
           run.atk = true;
-          setPressed({ atk: true, dash: run.dash });
+          setPressed(p => ({ ...p, atk: true }));
           transition('atk-down');
         }
         if (isDashKey && !run.dash) {
           run.dash = true;
-          setPressed({ atk: run.atk, dash: true });
+          setPressed(p => ({ ...p, dash: true }));
           transition('dash-down');
         }
       } else {
         run.pressed.delete(code);
         if (isAtkKey && run.atk) {
-          run.atk = false;
-          setPressed({ atk: false, dash: run.dash });
-          transition('atk-up');
+          if (!run.gpAtkPressed) {
+            run.atk = false;
+            setPressed(p => ({ ...p, atk: false }));
+            transition('atk-up');
+          }
         }
         if (isDashKey && run.dash) {
-          run.dash = false;
-          setPressed({ atk: run.atk, dash: false });
-          transition('dash-up');
+          if (!run.gpDashPressed) {
+            run.dash = false;
+            setPressed(p => ({ ...p, dash: false }));
+            transition('dash-up');
+          }
         }
       }
     };
@@ -734,7 +859,7 @@ export default function App() {
 
   return (
     <div style={{ maxWidth: 880, margin: '0 auto', padding: '26px 24px 56px', display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <DynamicIsland running={running} />
+      <DynamicIsland running={running && !waitingForStart} />
       
       {/* GitHub Link (fixed far left, hidden when playing) */}
       <a 
@@ -922,10 +1047,13 @@ export default function App() {
         </div>
       </div>
 
-      {/* mouse + speedometer + rider */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 30, flexWrap: 'wrap' }}>
-        <MouseOverlay pressed={pressed} bindings={bindings} listen={listen} onRebind={onRebind} />
-        <div style={{ width: 320, maxWidth: '100%', position: 'relative' }}>
+      {/* Dashboard Row (Inputs, Speedometer, and Dancer Side-by-Side) */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 20, flexWrap: 'wrap', marginTop: 8 }}>
+        {/* Left: Interactive Input Visuals */}
+        <MouseOverlay pressed={pressed} bindings={bindings} listen={listen} onRebind={onRebind} gamepadConnected={gamepadConnected} />
+        
+        {/* Center: Speedometer & Readout */}
+        <div style={{ width: 260, maxWidth: '100%', position: 'relative' }}>
           {/* dial stat rail */}
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 6px', marginBottom: -8 }}>
             <Stat label="STREAK" value={'×' + streak} hot={streak >= 6} />
@@ -972,6 +1100,8 @@ export default function App() {
             })}
           </div>
         </div>
+
+        {/* Right: Dancer GIF/WebM */}
         <div style={{ position: 'relative', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <video
             ref={videoRef}
@@ -980,8 +1110,8 @@ export default function App() {
             muted
             playsInline
             style={{
-              width: 112,
-              height: 112,
+              width: 100,
+              height: 100,
               display: 'block',
               position: 'relative',
               transform: `scale(${scale})`,
@@ -996,11 +1126,11 @@ export default function App() {
         </div>
       </div>
 
-      {/* start / stop + sound + freestyle toggle */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, marginTop: 20 }}>
+      {/* Start / Stop + Sound + Freestyle Controls (Restored at bottom) */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, marginTop: 12 }}>
         <button onClick={running ? stop : start} style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '15px 46px',
-          fontSize: 16, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: '0.16em',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '12px 36px',
+          fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: '0.14em',
           background: running ? 'transparent' : 'var(--text-primary)',
           color: running ? 'var(--severity-critical)' : 'var(--bg-primary)',
           border: `2px solid ${running ? 'var(--severity-critical)' : 'var(--text-primary)'}`,
@@ -1008,8 +1138,9 @@ export default function App() {
           {running ? <StopIcon /> : <PlayIcon />}{running ? 'Stop' : 'Ride'}
         </button>
         <button onClick={() => setSound((s) => !s)} title={sound ? 'Mute' : 'Unmute'} style={{
-          width: 44, height: 44, border: '1px solid var(--border-light)', background: 'var(--bg-secondary)', cursor: 'pointer',
-          color: sound ? 'var(--text-primary)' : 'var(--text-muted)', fontSize: 17, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          width: 40, height: 40, border: '1px solid var(--border-light)', background: 'var(--bg-secondary)', cursor: 'pointer',
+          color: sound ? 'var(--text-primary)' : 'var(--text-muted)', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          borderRadius: 4
         }}>{sound ? '♪' : '✕'}</button>
         <button 
           onClick={() => setFreestyle((f) => !f)} 
@@ -1021,8 +1152,8 @@ export default function App() {
             color: freestyle ? 'var(--bg-primary)' : 'var(--text-secondary)',
             cursor: (running && !waitingForStart) ? 'not-allowed' : 'pointer',
             padding: '0 16px',
-            height: 44,
-            fontSize: 12,
+            height: 40,
+            fontSize: 11,
             fontFamily: 'var(--font-display)',
             fontWeight: 700,
             textTransform: 'uppercase',
