@@ -8,7 +8,7 @@ export const VULCAN_CONFIG = {
   },
 
   // Speed (km/h on the Flamestrider)
-  SPEED_MAX: 289,
+  SPEED_MAX: 299,
   REDLINE: 175,
   SPEED_DELTA: {
     perfect: 10,
@@ -43,15 +43,15 @@ export const COMBOS = {
       { action: "atk-up", t: 1640, label: "FINISHER" },
     ],
     seq: [
-      { sym: '▼', side: 'L', dwell: 200 },
-      { sym: '▼', side: 'R', dwell: 50 },
-      { sym: '▲', side: 'R', dwell: 70 },
-      { sym: '▲', side: 'L', dwell: 50 },
-      { sym: '▼', side: 'L', dwell: 200 },
-      { sym: '▼', side: 'R', dwell: 50 },
-      { sym: '▲', side: 'R', dwell: 1020 },
-      { sym: '▲', side: 'L', dwell: 520 },
-    ]
+      { sym: "▼", side: "L", dwell: 200 },
+      { sym: "▼", side: "R", dwell: 50 },
+      { sym: "▲", side: "R", dwell: 70 },
+      { sym: "▲", side: "L", dwell: 50 },
+      { sym: "▼", side: "L", dwell: 200 },
+      { sym: "▼", side: "R", dwell: 50 },
+      { sym: "▲", side: "R", dwell: 1020 },
+      { sym: "▲", side: "L", dwell: 520 },
+    ],
   },
   cd: {
     name: "CD (Short Loop)",
@@ -68,10 +68,10 @@ export const COMBOS = {
       { action: "atk-up", t: 320, label: "cancel" },
     ],
     seq: [
-      { sym: '▼', side: 'L', dwell: 200 },
-      { sym: '▼', side: 'R', dwell: 50 },
-      { sym: '▲', side: 'R', dwell: 70 },
-      { sym: '▲', side: 'L', dwell: 1000 },
-    ]
-  }
+      { sym: "▼", side: "L", dwell: 200 },
+      { sym: "▼", side: "R", dwell: 50 },
+      { sym: "▲", side: "R", dwell: 70 },
+      { sym: "▲", side: "L", dwell: 1000 },
+    ],
+  },
 };
