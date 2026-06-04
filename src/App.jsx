@@ -201,6 +201,8 @@ export default function App() {
   const init = loadStore();
   const [bindings, setBindings] = useState(init.bindings);
   const [sound, setSound] = useState(init.settings.sound !== false);
+  const [freestyle, setFreestyle] = useState(init.settings.freestyle === true);
+  const [waitingForStart, setWaitingForStart] = useState(false);
   const [running, setRunning] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const [speed, setSpeed] = useState(0);
@@ -299,7 +301,8 @@ export default function App() {
     dash: false,
     gradesLog: [],
     speedHistory: [],
-    lastRecordTime: 0
+    lastRecordTime: 0,
+    waitingForStart: false
   });
   const lastRef = useRef(null);
   const cdRef = useRef(0);
@@ -344,8 +347,8 @@ export default function App() {
 
   useEffect(() => {
     soundRef.current = sound;
-    saveStore(bindings, { ...init.settings, sound });
-  }, [sound, bindings, init.settings]);
+    saveStore(bindings, { ...init.settings, sound, freestyle });
+  }, [sound, freestyle, bindings, init.settings]);
 
   useEffect(() => {
     listenRef.current = listen;
@@ -411,7 +414,23 @@ export default function App() {
 
   const transition = (action) => {
     const run = runRef.current;
-    if (!run.running || run.now < 0) return;
+    if (!run.running) return;
+
+    if (freestyle && run.waitingForStart) {
+      const firstEvent = REP_EVENTS[0];
+      if (firstEvent && firstEvent.action === action) {
+        run.waitingForStart = false;
+        setWaitingForStart(false);
+        run.startPerf = performance.now();
+        run.now = 0;
+        nowRef.current = 0;
+      } else {
+        return;
+      }
+    } else if (!freestyle && run.now < 0) {
+      return;
+    }
+
     const ev = run.events[run.nextIdx];
     if (!ev) return;
     const tReal = ev.t / RATE;
@@ -464,48 +483,69 @@ export default function App() {
           run.startPerf += frameDelta;
           frameDelta = 0;
         }
-        const now = t - run.startPerf;
-        run.now = now;
-        nowRef.current = now;
-        const dtSec = frameDelta / 1000;
-        if (now >= 0) {
-          ensureEvents(Math.ceil((now * RATE) / REP_LEN) + 2);
-          
-          // Sample speed for analytics graph
-          if (now - run.lastRecordTime >= 100) {
-            run.speedHistory = run.speedHistory || [];
-            run.speedHistory.push({ time: now, speed: run.speed });
-            run.lastRecordTime = now;
-          }
 
-          let ev;
-          while ((ev = run.events[run.nextIdx])) {
-            const eventInRep = run.nextIdx % REP_EVENTS.length;
-            let goodWindow = WIN.good * (eventInRep === 4 ? 1.30 : 1.0);
-            if (ev.action === 'dash-up') {
-              goodWindow += 70;
+        if (freestyle && run.waitingForStart) {
+          run.now = 0;
+          nowRef.current = 0;
+          setSpeed(run.speed);
+        } else {
+          const now = t - run.startPerf;
+          run.now = now;
+          nowRef.current = now;
+          const dtSec = frameDelta / 1000;
+          if (now >= 0) {
+            if (!freestyle) {
+              ensureEvents(Math.ceil((now * RATE) / REP_LEN) + 2);
             }
-            if (now > ev.t / RATE + goodWindow + 70) {
-              grade('miss', 0);
-              run.nextIdx++;
-            } else {
-              break;
+            
+            // Sample speed for analytics graph
+            if (now - run.lastRecordTime >= 100) {
+              run.speedHistory = run.speedHistory || [];
+              run.speedHistory.push({ time: now, speed: run.speed });
+              run.lastRecordTime = now;
             }
+
+            let ev;
+            while ((ev = run.events[run.nextIdx])) {
+              const eventInRep = run.nextIdx % REP_EVENTS.length;
+              let goodWindow = WIN.good * (eventInRep === 4 ? 1.30 : 1.0);
+              if (ev.action === 'dash-up') {
+                goodWindow += 70;
+              }
+              if (now > ev.t / RATE + goodWindow + 70) {
+                grade('miss', 0);
+                run.nextIdx++;
+              } else {
+                break;
+              }
+            }
+
+            if (freestyle && run.nextIdx >= REP_EVENTS.length) {
+              run.waitingForStart = true;
+              setWaitingForStart(true);
+              run.events = [];
+              run.genRep = 0;
+              run.nextIdx = 0;
+              ensureEvents(0);
+              run.now = 0;
+              nowRef.current = 0;
+            }
+
+            run.speed = clamp(run.speed - DECAY_PER_SEC * dtSec, 0, SPEED_MAX);
           }
-          run.speed = clamp(run.speed - DECAY_PER_SEC * dtSec, 0, SPEED_MAX);
+          const cd = now < 0 ? Math.ceil(-now / 1000) : 0;
+          if (cd !== cdRef.current) {
+            cdRef.current = cd;
+            setCountdown(cd);
+          }
+          setSpeed(run.speed);
         }
-        const cd = now < 0 ? Math.ceil(-now / 1000) : 0;
-        if (cd !== cdRef.current) {
-          cdRef.current = cd;
-          setCountdown(cd);
-        }
-        setSpeed(run.speed);
       }
       rafRef.current = requestAnimationFrame(loop);
     };
     rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [DECAY_PER_SEC, RATE, REP_LEN, SPEED_MAX, WIN.good]);
+  }, [DECAY_PER_SEC, RATE, REP_LEN, SPEED_MAX, WIN.good, freestyle, REP_EVENTS]);
 
   const start = () => {
     const run = runRef.current;
@@ -513,8 +553,6 @@ export default function App() {
     run.genRep = 0;
     run.nextIdx = 0;
     run.speed = 0;
-    run.now = -3000;
-    run.startPerf = performance.now() + 3000;
     run.lastT = null;
     run.pressed = new Set();
     run.atk = false;
@@ -522,7 +560,22 @@ export default function App() {
     run.gradesLog = [];
     run.speedHistory = [{ time: 0, speed: 0 }];
     run.lastRecordTime = 0;
-    ensureEvents(4);
+
+    if (freestyle) {
+      run.now = 0;
+      run.startPerf = 0;
+      run.waitingForStart = true;
+      setWaitingForStart(true);
+      ensureEvents(0);
+      setCountdown(0);
+    } else {
+      run.now = -3000;
+      run.startPerf = performance.now() + 3000;
+      run.waitingForStart = false;
+      setWaitingForStart(false);
+      ensureEvents(4);
+    }
+
     lastRef.current = null;
     setLast(null);
     setGrades([]);
@@ -793,6 +846,35 @@ export default function App() {
               <span style={{ fontFamily: 'var(--font-display)', fontSize: 72, fontWeight: 700, color: 'var(--severity-high)' }}>{countdown}</span>
             </div>
           )}
+          {running && freestyle && waitingForStart && (
+            <div style={{ 
+              position: 'absolute', 
+              inset: 0, 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              pointerEvents: 'none',
+              background: 'rgba(255, 255, 255, 0.05)',
+              backdropFilter: 'blur(1px)',
+              animation: 'fadeIn 0.2s ease-out'
+            }}>
+              <span style={{ 
+                fontFamily: 'var(--font-display)', 
+                fontSize: 16, 
+                fontWeight: 700, 
+                color: 'var(--text-primary)', 
+                letterSpacing: '0.12em',
+                textTransform: 'uppercase',
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border-light)',
+                padding: '10px 22px',
+                borderRadius: 6,
+                boxShadow: '0 10px 25px rgba(0,0,0,0.1)'
+              }}>
+                Awaiting First Input (Hold Charge)
+              </span>
+            </div>
+          )}
         </div>
         <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 7, textAlign: 'center' }}>
           Hold <b style={{ color: 'var(--text-secondary)' }}>{codeLabel(bindings.attack)}</b> across each charge bar; tap <b style={{ color: 'var(--text-secondary)' }}>{codeLabel(bindings.dash)}</b> inside it. <b style={{ color: 'var(--severity-critical)', fontWeight: '700' }}>Mouse input works over this strip.</b>
@@ -857,7 +939,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* start / stop + sound */}
+      {/* start / stop + sound + freestyle toggle */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, marginTop: 20 }}>
         <button onClick={running ? stop : start} style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '15px 46px',
@@ -872,6 +954,29 @@ export default function App() {
           width: 44, height: 44, border: '1px solid var(--border-light)', background: 'var(--bg-secondary)', cursor: 'pointer',
           color: sound ? 'var(--text-primary)' : 'var(--text-muted)', fontSize: 17, display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>{sound ? '♪' : '✕'}</button>
+        <button 
+          onClick={() => setFreestyle((f) => !f)} 
+          disabled={running}
+          title={freestyle ? "Toggle Rhythm Mode" : "Toggle Freestyle Mode"}
+          style={{
+            border: '1px solid var(--border-light)',
+            background: freestyle ? 'var(--text-primary)' : 'var(--bg-secondary)',
+            color: freestyle ? 'var(--bg-primary)' : 'var(--text-secondary)',
+            cursor: running ? 'not-allowed' : 'pointer',
+            padding: '0 16px',
+            height: 44,
+            fontSize: 12,
+            fontFamily: 'var(--font-display)',
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+            transition: 'all 0.15s',
+            opacity: running ? 0.6 : 1,
+            borderRadius: 4
+          }}
+        >
+          {freestyle ? 'Freestyle: ON' : 'Freestyle: OFF'}
+        </button>
       </div>
 
       {/* latest update info */}
