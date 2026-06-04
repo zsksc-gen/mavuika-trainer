@@ -3,7 +3,7 @@ import { VB, GRADE_COLOR } from '../core/tokens';
 
 const PX_PER_MS = 0.26;
 
-export default function Lane({ nowRef, rate, judgeFlash, repLen, repBars }) {
+export default function Lane({ nowRef, rate, judgeFlash, repLen, repBars, freestyle }) {
   const REP_LEN = repLen;
   const REP_BARS = repBars;
   const wrapRef = useRef(null);
@@ -29,7 +29,8 @@ export default function Lane({ nowRef, rate, judgeFlash, repLen, repBars }) {
       if (inner) {
         const curRep = Math.max(0, Math.floor((now * rate) / REP_LEN));
         const out = [];
-        for (let r = curRep - 1; r <= curRep + 6; r++) {
+        const maxRepToRender = freestyle ? curRep : (curRep + 6);
+        for (let r = curRep - 1; r <= maxRepToRender; r++) {
           if (r < 0) continue;
           const base = r * REP_LEN;
           REP_BARS.forEach((b, bi) => {
@@ -94,7 +95,7 @@ export default function Lane({ nowRef, rate, judgeFlash, repLen, repBars }) {
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [w, rate, REP_LEN, REP_BARS]);
+  }, [w, rate, REP_LEN, REP_BARS, freestyle]);
 
   const judgeX = Math.min(180, w * 0.22);
   const flashColor = judgeFlash ? GRADE_COLOR[judgeFlash.grade] : 'var(--accent-gold)';

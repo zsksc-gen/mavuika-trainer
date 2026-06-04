@@ -354,6 +354,21 @@ export default function App() {
     listenRef.current = listen;
   }, [listen]);
 
+  // Auto-start on mount
+  useEffect(() => {
+    start();
+  }, []);
+
+  // Regenerate events when combo config changes while waiting for start
+  useEffect(() => {
+    if (runRef.current.waitingForStart) {
+      runRef.current.events = [];
+      runRef.current.genRep = 0;
+      runRef.current.nextIdx = 0;
+      ensureEvents(freestyle ? 0 : 4);
+    }
+  }, [comboKey, cdMultiplier, freestyle]);
+
   useEffect(() => {
     if (grades.length === 0) return;
     const timer = setInterval(() => {
@@ -416,7 +431,7 @@ export default function App() {
     const run = runRef.current;
     if (!run.running) return;
 
-    if (freestyle && run.waitingForStart) {
+    if (run.waitingForStart) {
       const firstEvent = REP_EVENTS[0];
       if (firstEvent && firstEvent.action === action) {
         run.waitingForStart = false;
@@ -427,8 +442,6 @@ export default function App() {
       } else {
         return;
       }
-    } else if (!freestyle && run.now < 0) {
-      return;
     }
 
     const ev = run.events[run.nextIdx];
@@ -484,7 +497,7 @@ export default function App() {
           frameDelta = 0;
         }
 
-        if (freestyle && run.waitingForStart) {
+        if (run.waitingForStart) {
           run.now = 0;
           nowRef.current = 0;
           setSpeed(run.speed);
@@ -561,18 +574,15 @@ export default function App() {
     run.speedHistory = [{ time: 0, speed: 0 }];
     run.lastRecordTime = 0;
 
+    run.now = 0;
+    run.startPerf = 0;
+    run.waitingForStart = true;
+    setWaitingForStart(true);
+    setCountdown(0);
+
     if (freestyle) {
-      run.now = 0;
-      run.startPerf = 0;
-      run.waitingForStart = true;
-      setWaitingForStart(true);
       ensureEvents(0);
-      setCountdown(0);
     } else {
-      run.now = -3000;
-      run.startPerf = performance.now() + 3000;
-      run.waitingForStart = false;
-      setWaitingForStart(false);
       ensureEvents(4);
     }
 
@@ -601,6 +611,11 @@ export default function App() {
     setGradesLog([...runRef.current.gradesLog]);
     setSpeedHistory([...runRef.current.speedHistory]);
     setShowReport(true);
+  };
+
+  const closeReport = () => {
+    setShowReport(false);
+    start();
   };
 
   // ---- input handling ----
@@ -702,7 +717,7 @@ export default function App() {
       <DynamicIsland running={running} />
       
       {/* GitHub Link (fixed far left, hidden when playing) */}
-      {!running && (
+      {waitingForStart && (
         <a 
           href="https://github.com/zsksc-gen/mavuika-trainer"
           target="_blank"
@@ -735,8 +750,8 @@ export default function App() {
         <div style={{ display: 'inline-block', marginTop: 10, padding: '5px 18px', border: '1px solid var(--border-light)', fontFamily: 'var(--font-display)', fontSize: 17, letterSpacing: '0.16em', color: 'var(--text-secondary)' }}>{COMBO_NOTATION}</div>
       </div>
 
-      {/* combo selection buttons (only visible when not running) */}
-      {!running && (
+      {/* combo selection buttons (only visible when waiting to start) */}
+      {waitingForStart && (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginTop: -4 }}>
             {Object.entries(COMBOS).map(([key, item]) => {
@@ -840,13 +855,13 @@ export default function App() {
           </span>
         </div>
         <div ref={stageRef} tabIndex={0} className="stage-focus" style={{ position: 'relative', cursor: running ? 'crosshair' : 'default' }}>
-          <Lane nowRef={nowRef} rate={RATE} judgeFlash={liveFlash} repLen={REP_LEN} repBars={activeCombo.repBars} />
+          <Lane nowRef={nowRef} rate={RATE} judgeFlash={liveFlash} repLen={REP_LEN} repBars={activeCombo.repBars} freestyle={freestyle} />
           {running && countdown > 0 && (
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
               <span style={{ fontFamily: 'var(--font-display)', fontSize: 72, fontWeight: 700, color: 'var(--severity-high)' }}>{countdown}</span>
             </div>
           )}
-          {running && freestyle && waitingForStart && (
+          {running && waitingForStart && (
             <div style={{ 
               position: 'absolute', 
               inset: 0, 
@@ -956,13 +971,13 @@ export default function App() {
         }}>{sound ? '♪' : '✕'}</button>
         <button 
           onClick={() => setFreestyle((f) => !f)} 
-          disabled={running}
+          disabled={running && !waitingForStart}
           title={freestyle ? "Toggle Rhythm Mode" : "Toggle Freestyle Mode"}
           style={{
             border: '1px solid var(--border-light)',
             background: freestyle ? 'var(--text-primary)' : 'var(--bg-secondary)',
             color: freestyle ? 'var(--bg-primary)' : 'var(--text-secondary)',
-            cursor: running ? 'not-allowed' : 'pointer',
+            cursor: (running && !waitingForStart) ? 'not-allowed' : 'pointer',
             padding: '0 16px',
             height: 44,
             fontSize: 12,
@@ -971,7 +986,7 @@ export default function App() {
             textTransform: 'uppercase',
             letterSpacing: '0.08em',
             transition: 'all 0.15s',
-            opacity: running ? 0.6 : 1,
+            opacity: (running && !waitingForStart) ? 0.6 : 1,
             borderRadius: 4
           }}
         >
@@ -980,7 +995,7 @@ export default function App() {
       </div>
 
       {/* latest update info */}
-      {!running && latestPR && (
+      {waitingForStart && latestPR && (
         <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--text-muted)', marginTop: 8, letterSpacing: '0.02em' }}>
           LATEST UPDATE: <a href={latestPR.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-secondary)', textDecoration: 'none', borderBottom: '1px dashed var(--border-light)', fontWeight: 600 }}>
             {latestPR.number ? `#${latestPR.number} ` : ''}{latestPR.title}
@@ -990,7 +1005,7 @@ export default function App() {
 
       <AnalyticsReport 
         show={showReport} 
-        onClose={() => setShowReport(false)} 
+        onClose={closeReport} 
         gradesLog={gradesLog} 
         speedHistory={speedHistory} 
         speedMax={SPEED_MAX}
