@@ -48,6 +48,18 @@ body {
     }
 }
 
+/* Small landscape phones: shrink so the track, speedometer and sprite all fit */
+@media (max-height: 520px) {
+    body {
+        zoom: 0.82;
+    }
+}
+@media (max-height: 410px) {
+    body {
+        zoom: 0.7;
+    }
+}
+
 @media (min-width: 2200px) and (min-height: 1200px) {
     body {
         zoom: 1.3;
