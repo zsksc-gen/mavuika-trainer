@@ -8,8 +8,13 @@ export default function DynamicIsland({ running }) {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('tutorials'); // 'tutorials' | 'credits'
   const contentRef = useRef(null);
+  const fetchedRef = useRef(false);
 
   useEffect(() => {
+    // Defer the markdown fetches until the user actually opens the menu.
+    if (!expanded || fetchedRef.current) return;
+    fetchedRef.current = true;
+
     const fetchMD = (path) => {
       return fetch(path)
         .then((res) => {
@@ -62,7 +67,7 @@ export default function DynamicIsland({ running }) {
         setCredContent('<p style="color: var(--severity-critical)">Failed to load credits</p>');
         setLoading(false);
       });
-  }, []);
+  }, [expanded]);
 
   if (running) return null; // Hidden while playing
 

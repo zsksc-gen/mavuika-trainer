@@ -1,3 +1,11 @@
 [build]
   command = "npm run build"
   publish = "dist"
+
+# Hashed JS/CSS never change content -> cache hard. NOTE: logo.png /
+
+# Stop favicon.ico 404 probes by serving the existing logo.
+[[redirects]]
+  from = "/favicon.ico"
+  to = "/assets/logo.png"
+  status = 200

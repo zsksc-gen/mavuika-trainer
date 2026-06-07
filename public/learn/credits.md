@@ -7,7 +7,7 @@
   * Bilibili: [eva935](https://space.bilibili.com/3461576111688003/) ✮
 
 * **Featured Tutorial**: @brickingitrn (Discord; [Youtube](https://www.youtube.com/channel/UCN1yJI75qoEvrhnBVP-FYxQ))
-* 
+
 * **General Help**: 
   * @Lego102Lego - Chinese smuggler
   * @kura - I steal his acount
