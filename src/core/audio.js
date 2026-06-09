@@ -1,9 +1,22 @@
 let audioCtx = null;
 
+export function initAudio() {
+  try {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx && audioCtx.state === "suspended") {
+      audioCtx.resume();
+    }
+  } catch (e) {
+    console.error("Failed to initialize AudioContext:", e);
+  }
+}
+
 export function blip(freq, dur, vol, type) {
   try {
-    if (!audioCtx)
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    initAudio();
+    if (!audioCtx) return;
     const o = audioCtx.createOscillator(),
       g = audioCtx.createGain();
     o.type = type || "sine";

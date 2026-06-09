@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { VULCAN_CONFIG, COMBOS } from "./core/config";
 import { clamp, rawCode, codeLabel, loadStore, saveStore } from "./core/utils";
-import { GRADE_SOUND, blip } from "./core/audio";
+import { GRADE_SOUND, blip, initAudio } from "./core/audio";
 import { GRADE_COLOR, GRADE_TEXT } from "./core/tokens";
 import { PlayIcon, StopIcon } from "./components/Icons";
 import Speedometer from "./components/Speedometer";
@@ -772,6 +772,30 @@ export default function App() {
     listenRef.current = listen;
   }, [listen]);
 
+  // Resume AudioContext on first user interaction
+  useEffect(() => {
+    const resume = () => {
+      initAudio();
+      cleanUp();
+    };
+
+    const cleanUp = () => {
+      window.removeEventListener("click", resume);
+      window.removeEventListener("keydown", resume);
+      window.removeEventListener("mousedown", resume);
+      window.removeEventListener("pointerdown", resume);
+      window.removeEventListener("touchstart", resume);
+    };
+
+    window.addEventListener("click", resume);
+    window.addEventListener("keydown", resume);
+    window.addEventListener("mousedown", resume);
+    window.addEventListener("pointerdown", resume);
+    window.addEventListener("touchstart", resume);
+
+    return cleanUp;
+  }, []);
+
   // Auto-start on mount
   useEffect(() => {
     start();
@@ -1159,10 +1183,6 @@ export default function App() {
     setTopSpeed(0);
     run.running = true;
     setRunning(true);
-    try {
-      const a = new (window.AudioContext || window.webkitAudioContext)();
-      if (a.state === "suspended") a.resume();
-    } catch (e) {}
   };
 
   const stop = () => {
