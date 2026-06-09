@@ -30,6 +30,7 @@ function AnalyticsReport({
   speedHistory,
   speedMax,
   redline,
+  gameSpeed = 1,
 }) {
   const [verbose, setVerbose] = useState(false);
   if (!show) return null;
@@ -126,16 +127,40 @@ function AnalyticsReport({
             paddingBottom: 14,
           }}
         >
-          <h2
-            style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 22,
-              letterSpacing: "0.04em",
-              textTransform: "uppercase",
-            }}
-          >
-            Performance Report
-          </h2>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <h2
+              style={{
+                fontFamily: "var(--font-display)",
+                fontSize: 22,
+                letterSpacing: "0.04em",
+                textTransform: "uppercase",
+              }}
+            >
+              Performance Report
+            </h2>
+            <span
+              title="Game speed this run was played at — scoring scales with it"
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: "0.06em",
+                padding: "3px 8px",
+                borderRadius: 6,
+                whiteSpace: "nowrap",
+                color:
+                  gameSpeed < 1
+                    ? "var(--accent-gold)"
+                    : "var(--severity-low)",
+                background:
+                  gameSpeed < 1
+                    ? "rgba(245,200,66,0.12)"
+                    : "var(--bg-secondary)",
+                border: "1px solid var(--border-light)",
+              }}
+            >
+              {Math.round(gameSpeed * 100)}% SPEED
+            </span>
+          </div>
           <button
             onClick={onClose}
             style={{
@@ -558,6 +583,7 @@ export default function App() {
   const [topSpeed, setTopSpeed] = useState(0);
   const [grades, setGrades] = useState([]);
   const [gradesLog, setGradesLog] = useState([]);
+  const [reportSpeed, setReportSpeed] = useState(1); // game speed captured for the summary
   const [speedHistory, setSpeedHistory] = useState([]);
   const [showReport, setShowReport] = useState(false);
   const streakRef = useRef(0);
@@ -565,6 +591,7 @@ export default function App() {
 
   const [comboKey, setComboKey] = useState("cdcdcf");
   const [cdMultiplier, setCdMultiplier] = useState(2); // 1 = CD, 2 = CDCD
+  const [gameSpeed, setGameSpeed] = useState(1); // playback rate, 0.05–1.0
 
   const activeCombo = (() => {
     const base = COMBOS[comboKey] || COMBOS.cdcdcf;
@@ -628,7 +655,7 @@ export default function App() {
   const REP_EVENTS = activeCombo.repEvents;
 
   const { SPEED_MAX, REDLINE, SPEED_DELTA, DECAY_PER_SEC, TOL } = VULCAN_CONFIG;
-  const RATE = 1.0;
+  const RATE = gameSpeed;
   const WIN = TOL.normal;
 
   const nowRef = useRef(-3000);
@@ -805,7 +832,8 @@ export default function App() {
 
   const grade = (g, delta, action) => {
     const run = runRef.current;
-    run.speed = clamp(run.speed + (SPEED_DELTA[g] || 0), 0, SPEED_MAX);
+    // Speed gains/penalties scale with game speed so slow practice scores lower.
+    run.speed = clamp(run.speed + (SPEED_DELTA[g] || 0) * RATE, 0, SPEED_MAX);
     const ts = performance.now();
     lastRef.current = { grade: g, delta, ts, action };
     // momentum streak: clean hits build it, mistakes break it
@@ -841,6 +869,9 @@ export default function App() {
     }
   };
 
+  // Always-current transition, so long-lived (empty-deps) input listeners never
+  // call a stale closure (e.g. with an outdated game-speed RATE).
+  const transitionRef = useRef(null);
   const transition = (action) => {
     const run = runRef.current;
     if (!run.running) return;
@@ -897,12 +928,15 @@ export default function App() {
         }
       }
 
-      grade(g, delta, ev.action);
+      // Log the offset in game-time ms (delta is real-time) so the readout is
+      // consistent across game speeds.
+      grade(g, delta * RATE, ev.action);
       run.nextIdx++;
     } else {
       grade("wrong", 0, ev.action);
     }
   };
+  transitionRef.current = transition;
 
   // main loop (pause-aware clock)
   useEffect(() => {
@@ -961,7 +995,7 @@ export default function App() {
             if (!run.atk) {
               run.atk = true;
               setPressed((p) => ({ ...p, atk: true }));
-              transition("atk-down");
+              transitionRef.current("atk-down");
             }
           } else if (!atkPressed && run.gpAtkPressed) {
             run.gpAtkPressed = false;
@@ -970,7 +1004,7 @@ export default function App() {
             if (!kbPressed && run.atk) {
               run.atk = false;
               setPressed((p) => ({ ...p, atk: false }));
-              transition("atk-up");
+              transitionRef.current("atk-up");
             }
           }
 
@@ -980,7 +1014,7 @@ export default function App() {
             if (!run.dash) {
               run.dash = true;
               setPressed((p) => ({ ...p, dash: true }));
-              transition("dash-down");
+              transitionRef.current("dash-down");
             }
           } else if (!dashPressed && run.gpDashPressed) {
             run.gpDashPressed = false;
@@ -996,7 +1030,7 @@ export default function App() {
             if (!kbPressed && run.dash) {
               run.dash = false;
               setPressed((p) => ({ ...p, dash: false }));
-              transition("dash-up");
+              transitionRef.current("dash-up");
             }
           }
         }
@@ -1058,7 +1092,11 @@ export default function App() {
               nowRef.current = 0;
             }
 
-            run.speed = clamp(run.speed - DECAY_PER_SEC * dtSec, 0, SPEED_MAX);
+            run.speed = clamp(
+              run.speed - DECAY_PER_SEC * RATE * dtSec,
+              0,
+              SPEED_MAX,
+            );
           }
           const cd = now < 0 ? Math.ceil(-now / 1000) : 0;
           if (cd !== cdRef.current) {
@@ -1132,6 +1170,7 @@ export default function App() {
     setRunning(false);
     setGradesLog([...runRef.current.gradesLog]);
     setSpeedHistory([...runRef.current.speedHistory]);
+    setReportSpeed(gameSpeed);
     setShowReport(true);
   };
 
@@ -1188,12 +1227,12 @@ export default function App() {
         if (isAtkKey && !run.atk) {
           run.atk = true;
           setPressed((p) => ({ ...p, atk: true }));
-          transition("atk-down");
+          transitionRef.current("atk-down");
         }
         if (isDashKey && !run.dash) {
           run.dash = true;
           setPressed((p) => ({ ...p, dash: true }));
-          transition("dash-down");
+          transitionRef.current("dash-down");
         }
       } else {
         run.pressed.delete(code);
@@ -1201,14 +1240,14 @@ export default function App() {
           if (!run.gpAtkPressed) {
             run.atk = false;
             setPressed((p) => ({ ...p, atk: false }));
-            transition("atk-up");
+            transitionRef.current("atk-up");
           }
         }
         if (isDashKey && run.dash) {
           if (!run.gpDashPressed) {
             run.dash = false;
             setPressed((p) => ({ ...p, dash: false }));
-            transition("dash-up");
+            transitionRef.current("dash-up");
           }
         }
       }
@@ -1253,11 +1292,11 @@ export default function App() {
       if (id === "atk" && !run.atk) {
         run.atk = true;
         setPressed((p) => ({ ...p, atk: true }));
-        transition("atk-down");
+        transitionRef.current("atk-down");
       } else if (id === "dash" && !run.dash) {
         run.dash = true;
         setPressed((p) => ({ ...p, dash: true }));
-        transition("dash-down");
+        transitionRef.current("dash-down");
       }
       if (navigator.vibrate) navigator.vibrate(8);
       if (soundRef.current) blip(700, 0.03, 0.05, "sine");
@@ -1265,11 +1304,11 @@ export default function App() {
       if (id === "atk" && run.atk && !run.gpAtkPressed) {
         run.atk = false;
         setPressed((p) => ({ ...p, atk: false }));
-        transition("atk-up");
+        transitionRef.current("atk-up");
       } else if (id === "dash" && run.dash && !run.gpDashPressed) {
         run.dash = false;
         setPressed((p) => ({ ...p, dash: false }));
-        transition("dash-up");
+        transitionRef.current("dash-up");
       }
     }
   };
@@ -1338,6 +1377,18 @@ export default function App() {
         <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
           <path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.24 6.839 9.504.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.464-1.11-1.464-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.579.688.481C19.137 20.24 22 16.42 22 12c0-5.523-4.477-10-10-10z" />
         </svg>
+        <span
+          style={{
+            marginLeft: 8,
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: "0.04em",
+            color: "var(--severity-critical)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          Report issue on GitHub
+        </span>
       </a>
 
       {/* title */}
@@ -1658,6 +1709,63 @@ export default function App() {
             gap: 10,
           }}
         >
+          {/* Game-speed control — slow the trainer down for practice (5%–100%).
+              Locked only while a combo is actively running (not while idle/awaiting first input). */}
+          <div
+            style={{
+              width: 320,
+              maxWidth: "100%",
+              display: "flex",
+              flexDirection: "column",
+              gap: 3,
+              opacity: running && !waitingForStart ? 0.5 : 1,
+            }}
+            title={
+              running && !waitingForStart
+                ? "Finish or stop the run to change game speed"
+                : "Practice speed"
+            }
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 8,
+                fontWeight: 700,
+                letterSpacing: "0.1em",
+                color: "var(--text-muted)",
+                textTransform: "uppercase",
+              }}
+            >
+              <span>Game Speed</span>
+              <span
+                style={{
+                  color:
+                    gameSpeed < 1
+                      ? "var(--accent-gold)"
+                      : "var(--text-secondary)",
+                }}
+              >
+                {Math.round(gameSpeed * 100)}%
+              </span>
+            </div>
+            <input
+              type="range"
+              min={5}
+              max={100}
+              step={5}
+              value={Math.round(gameSpeed * 100)}
+              disabled={running && !waitingForStart}
+              onChange={(e) => setGameSpeed(Number(e.target.value) / 100)}
+              style={{
+                width: "100%",
+                height: 6,
+                accentColor: "var(--accent-gold)",
+                cursor: running && !waitingForStart ? "not-allowed" : "pointer",
+              }}
+            />
+          </div>
+
           <div
             style={{
               display: "inline-flex",
@@ -2095,6 +2203,7 @@ export default function App() {
         speedHistory={speedHistory}
         speedMax={SPEED_MAX}
         redline={REDLINE}
+        gameSpeed={reportSpeed}
       />
     </div>
   );
