@@ -3,9 +3,10 @@ import { VULCAN_CONFIG, COMBOS } from "./core/config";
 import { clamp, rawCode, codeLabel, loadStore, saveStore } from "./core/utils";
 import { GRADE_SOUND, blip, initAudio } from "./core/audio";
 import { GRADE_COLOR, GRADE_TEXT } from "./core/tokens";
-import { PlayIcon, StopIcon } from "./components/Icons";
+import { PlayIcon, StopIcon, GearIcon } from "./components/Icons";
 import Speedometer from "./components/Speedometer";
 import Lane from "./components/Lane";
+import SettingsPanel from "./components/SettingsPanel";
 import DynamicIsland from "./components/DynamicIsland";
 import { MouseOverlay, Stat } from "./components/MouseOverlay";
 import { TouchCluster, DEFAULT_TOUCH_POS } from "./components/TouchCluster";
@@ -31,6 +32,7 @@ function AnalyticsReport({
   speedMax,
   redline,
   gameSpeed = 1,
+  rubberband = true,
 }) {
   const [verbose, setVerbose] = useState(false);
   if (!show) return null;
@@ -139,7 +141,7 @@ function AnalyticsReport({
               Performance Report
             </h2>
             <span
-              title="Game speed this run was played at — scoring scales with it"
+              title="Game speed this run was played at, scoring scales with it"
               style={{
                 fontSize: 11,
                 fontWeight: 700,
@@ -148,9 +150,7 @@ function AnalyticsReport({
                 borderRadius: 6,
                 whiteSpace: "nowrap",
                 color:
-                  gameSpeed < 1
-                    ? "var(--accent-gold)"
-                    : "var(--severity-low)",
+                  gameSpeed < 1 ? "var(--accent-gold)" : "var(--severity-low)",
                 background:
                   gameSpeed < 1
                     ? "rgba(245,200,66,0.12)"
@@ -159,6 +159,24 @@ function AnalyticsReport({
               }}
             >
               {Math.round(gameSpeed * 100)}% SPEED
+            </span>
+            <span
+              title={rubberband ? "Rubberbanding ON" : "Rubberbanding OFF"}
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: "0.06em",
+                padding: "3px 8px",
+                borderRadius: 6,
+                whiteSpace: "nowrap",
+                color: rubberband ? "var(--text-primary)" : "var(--text-muted)",
+                background: rubberband
+                  ? "rgba(245,200,66,0.12)"
+                  : "var(--bg-secondary)",
+                border: "1px solid var(--border-light)",
+              }}
+            >
+              RUBBERBAND {rubberband ? "ON" : "OFF"}
             </span>
           </div>
           <button
@@ -584,6 +602,7 @@ export default function App() {
   const [grades, setGrades] = useState([]);
   const [gradesLog, setGradesLog] = useState([]);
   const [reportSpeed, setReportSpeed] = useState(1); // game speed captured for the summary
+  const [reportRubberband, setReportRubberband] = useState(true); // rubberband state captured for the summary
   const [speedHistory, setSpeedHistory] = useState([]);
   const [showReport, setShowReport] = useState(false);
   const streakRef = useRef(0);
@@ -592,6 +611,23 @@ export default function App() {
   const [comboKey, setComboKey] = useState("cdcdcf");
   const [cdMultiplier, setCdMultiplier] = useState(2); // 1 = CD, 2 = CDCD
   const [gameSpeed, setGameSpeed] = useState(1); // playback rate, 0.05–1.0
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [theme, setTheme] = useState(
+    init.settings.theme === "dark" ? "dark" : "light",
+  );
+  // Rubberbanding (re-anchor timing to the player's actual input). Default on.
+  const [rubberband, setRubberband] = useState(
+    init.settings.rubberband !== false,
+  );
+  // Pulse the gear on a user's first visit until they open settings, once ever.
+  const [settingsSeen, setSettingsSeen] = useState(
+    init.settings.settingsSeen === true,
+  );
+
+  const openSettings = () => {
+    setSettingsOpen(true);
+    setSettingsSeen(true);
+  };
 
   const activeCombo = (() => {
     const base = COMBOS[comboKey] || COMBOS.cdcdcf;
@@ -785,8 +821,27 @@ export default function App() {
       mobile,
       touchPos,
       touchScale,
+      theme,
+      rubberband,
+      settingsSeen,
     });
-  }, [sound, freestyle, mobile, touchPos, touchScale, bindings, init.settings]);
+  }, [
+    sound,
+    freestyle,
+    mobile,
+    touchPos,
+    touchScale,
+    theme,
+    rubberband,
+    settingsSeen,
+    bindings,
+    init.settings,
+  ]);
+
+  // Apply the chosen theme to the document root so the CSS palette swaps.
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
 
   useEffect(() => {
     listenRef.current = listen;
@@ -965,22 +1020,24 @@ export default function App() {
       // Any matched hit shifts its successors by the raw signed delta; the hit
       // itself still keeps its own grade/penalty. miss/wrong never reach here
       // (they don't match the expected action and don't advance nextIdx), and
-      // drift is self-contained per rep — the next rep is generated canonical.
-      const repStartIdx = run.nextIdx - eventInRep;
-      const curRep = Math.floor(run.nextIdx / REP_EVENTS.length);
-      // Lazily reset the Lane mirror when we've entered a new rep.
-      if (laneOffsetRef.current.rep !== curRep) {
-        laneOffsetRef.current = {
-          rep: curRep,
-          offsets: new Array(REP_EVENTS.length).fill(0),
-        };
-      }
-      const shift = delta * RATE; // event times are stored in game-time
-      const offsets = laneOffsetRef.current.offsets;
-      for (let i = eventInRep + 1; i < REP_EVENTS.length; i++) {
-        const evIdx = repStartIdx + i;
-        if (run.events[evIdx]) run.events[evIdx].t += shift;
-        offsets[i] += shift;
+      // drift is self-contained per rep, the next rep is generated canonical.
+      if (rubberband) {
+        const repStartIdx = run.nextIdx - eventInRep;
+        const curRep = Math.floor(run.nextIdx / REP_EVENTS.length);
+        // Lazily reset the Lane mirror when we've entered a new rep.
+        if (laneOffsetRef.current.rep !== curRep) {
+          laneOffsetRef.current = {
+            rep: curRep,
+            offsets: new Array(REP_EVENTS.length).fill(0),
+          };
+        }
+        const shift = delta * RATE; // event times are stored in game-time
+        const offsets = laneOffsetRef.current.offsets;
+        for (let i = eventInRep + 1; i < REP_EVENTS.length; i++) {
+          const evIdx = repStartIdx + i;
+          if (run.events[evIdx]) run.events[evIdx].t += shift;
+          offsets[i] += shift;
+        }
       }
 
       // Log the offset in game-time ms (delta is real-time) so the readout is
@@ -1224,6 +1281,7 @@ export default function App() {
     setGradesLog([...runRef.current.gradesLog]);
     setSpeedHistory([...runRef.current.speedHistory]);
     setReportSpeed(gameSpeed);
+    setReportRubberband(rubberband);
     setShowReport(true);
   };
 
@@ -1394,12 +1452,9 @@ export default function App() {
           editing={touchEditing}
           onMove={(id, frac) => setTouchPos((p) => ({ ...p, [id]: frac }))}
           userScale={touchScale}
-          onScale={(id, val) =>
-            setTouchScale((p) => ({ ...p, [id]: val }))
-          }
+          onScale={(id, val) => setTouchScale((p) => ({ ...p, [id]: val }))}
         />
       )}
-
 
       {/* GitHub Link (fixed far left, hidden when playing) */}
       <a
@@ -1458,114 +1513,6 @@ export default function App() {
         >
           Mavuika Combo Trainer
         </h1>
-      </div>
-
-      {/* combo selection buttons */}
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: 12,
-          opacity: waitingForStart ? 1 : 0,
-          pointerEvents: waitingForStart ? "auto" : "none",
-          transition: "opacity 0.25s ease-in-out",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            gap: 12,
-            marginTop: -4,
-          }}
-        >
-          {Object.entries(COMBOS).map(([key, item]) => {
-            const isActive = comboKey === key;
-            return (
-              <button
-                key={key}
-                onClick={() => setComboKey(key)}
-                style={{
-                  background: isActive
-                    ? "var(--text-primary)"
-                    : "var(--bg-secondary)",
-                  color: isActive
-                    ? "var(--bg-primary)"
-                    : "var(--text-secondary)",
-                  border: `1px solid ${isActive ? "var(--text-primary)" : "var(--border-light)"}`,
-                  padding: "6px 14px",
-                  fontFamily: "var(--font-display)",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  letterSpacing: "0.04em",
-                  textTransform: "uppercase",
-                  cursor: "pointer",
-                  borderRadius: 4,
-                  transition: "all 0.15s",
-                }}
-              >
-                {item.name}
-              </button>
-            );
-          })}
-        </div>
-        {comboKey === "cd" && (
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              gap: 12,
-              padding: "6px 12px",
-              background: "var(--bg-secondary)",
-              border: "1px solid var(--border-light)",
-              borderRadius: 6,
-              animation: "fadeIn 0.2s ease-out",
-            }}
-          >
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                color: "var(--text-muted)",
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-              }}
-            >
-              Multiplier:
-            </span>
-            <div style={{ display: "flex", gap: 6 }}>
-              {[1, 2].map((num) => {
-                const active = cdMultiplier === num;
-                return (
-                  <button
-                    key={num}
-                    onClick={() => setCdMultiplier(num)}
-                    style={{
-                      background: active
-                        ? "var(--text-primary)"
-                        : "var(--bg-secondary)",
-                      color: active
-                        ? "var(--bg-primary)"
-                        : "var(--text-secondary)",
-                      border: `1px solid ${active ? "var(--text-primary)" : "var(--border-subtle)"}`,
-                      padding: "3px 10px",
-                      fontFamily: "var(--font-display)",
-                      fontSize: 10,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      borderRadius: 3,
-                      transition: "all 0.15s",
-                    }}
-                  >
-                    {num === 1 ? "1x (CD)" : "2x (CDCD)"}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* sequence reference */}
@@ -1764,63 +1711,6 @@ export default function App() {
             gap: 10,
           }}
         >
-          {/* Game-speed control — slow the trainer down for practice (5%–100%).
-              Locked only while a combo is actively running (not while idle/awaiting first input). */}
-          <div
-            style={{
-              width: 320,
-              maxWidth: "100%",
-              display: "flex",
-              flexDirection: "column",
-              gap: 3,
-              opacity: running && !waitingForStart ? 0.5 : 1,
-            }}
-            title={
-              running && !waitingForStart
-                ? "Finish or stop the run to change game speed"
-                : "Practice speed"
-            }
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                fontSize: 8,
-                fontWeight: 700,
-                letterSpacing: "0.1em",
-                color: "var(--text-muted)",
-                textTransform: "uppercase",
-              }}
-            >
-              <span>Game Speed</span>
-              <span
-                style={{
-                  color:
-                    gameSpeed < 1
-                      ? "var(--accent-gold)"
-                      : "var(--text-secondary)",
-                }}
-              >
-                {Math.round(gameSpeed * 100)}%
-              </span>
-            </div>
-            <input
-              type="range"
-              min={5}
-              max={100}
-              step={5}
-              value={Math.round(gameSpeed * 100)}
-              disabled={running && !waitingForStart}
-              onChange={(e) => setGameSpeed(Number(e.target.value) / 100)}
-              style={{
-                width: "100%",
-                height: 6,
-                accentColor: "var(--accent-gold)",
-                cursor: running && !waitingForStart ? "not-allowed" : "pointer",
-              }}
-            />
-          </div>
-
           <div
             style={{
               display: "inline-flex",
@@ -1867,28 +1757,50 @@ export default function App() {
           )}
 
           {mobile && running && !waitingForStart && (
-            <button
-              onClick={stop}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 10,
-                padding: "12px 36px",
-                fontSize: 15,
-                fontWeight: 700,
-                cursor: "pointer",
-                fontFamily: "var(--font-display)",
-                textTransform: "uppercase",
-                letterSpacing: "0.14em",
-                background: "transparent",
-                color: "var(--severity-critical)",
-                border: "2px solid var(--severity-critical)",
-              }}
-            >
-              <StopIcon />
-              Stop
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <button
+                onClick={stop}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 10,
+                  padding: "12px 36px",
+                  fontSize: 15,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  fontFamily: "var(--font-display)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.14em",
+                  background: "transparent",
+                  color: "var(--severity-critical)",
+                  border: "2px solid var(--severity-critical)",
+                }}
+              >
+                <StopIcon />
+                Stop
+              </button>
+              <button
+                onClick={openSettings}
+                className={settingsSeen ? undefined : "settings-pulse"}
+                title="Settings"
+                style={{
+                  width: 44,
+                  height: 44,
+                  border: "1px solid var(--border-light)",
+                  background: "var(--bg-secondary)",
+                  color: "var(--text-secondary)",
+                  cursor: "pointer",
+                  fontSize: 20,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 4,
+                }}
+              >
+                <GearIcon size={22} />
+              </button>
+            </div>
           )}
 
           {mobile && !(running && !waitingForStart) && (
@@ -1962,52 +1874,31 @@ export default function App() {
           )}
 
           {mobile && (
-            <div style={{ display: "flex", gap: 10 }}>
-              <button
-                onClick={() => setSound((s) => !s)}
-                title={sound ? "Mute" : "Unmute"}
-                style={{
-                  width: 40,
-                  height: 40,
-                  border: "1px solid var(--border-light)",
-                  background: "var(--bg-secondary)",
-                  cursor: "pointer",
-                  color: sound ? "var(--text-primary)" : "var(--text-muted)",
-                  fontSize: 16,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderRadius: 4,
-                }}
-              >
-                {sound ? "♪" : "✕"}
-              </button>
-              <button
-                onClick={() => setFreestyle((f) => !f)}
-                disabled={running && !waitingForStart}
-                title={freestyle ? "Toggle Rhythm Mode" : "Toggle Freestyle Mode"}
-                style={{
-                  border: "1px solid var(--border-light)",
-                  background: freestyle
-                    ? "var(--text-primary)"
-                    : "var(--bg-secondary)",
-                  color: freestyle ? "var(--bg-primary)" : "var(--text-secondary)",
-                  cursor: running && !waitingForStart ? "not-allowed" : "pointer",
-                  padding: "0 16px",
-                  height: 40,
-                  fontSize: 11,
-                  fontFamily: "var(--font-display)",
-                  fontWeight: 700,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.08em",
-                  transition: "all 0.15s",
-                  opacity: running && !waitingForStart ? 0.6 : 1,
-                  borderRadius: 4,
-                }}
-              >
-                {freestyle ? "Freestyle: ON" : "Freestyle: OFF"}
-              </button>
-            </div>
+            <button
+              onClick={openSettings}
+              className={settingsSeen ? undefined : "settings-pulse"}
+              title="Settings"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                height: 44,
+                padding: "0 20px",
+                border: "1px solid var(--border-light)",
+                background: "var(--bg-secondary)",
+                color: "var(--text-secondary)",
+                cursor: "pointer",
+                fontSize: 12,
+                fontFamily: "var(--font-display)",
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+                borderRadius: 4,
+              }}
+            >
+              <GearIcon size={18} /> Settings
+            </button>
           )}
         </div>
 
@@ -2080,7 +1971,9 @@ export default function App() {
                     }}
                   />
                   {stepLabel && (
-                    <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>
+                    <span
+                      style={{ color: "var(--text-muted)", fontWeight: 600 }}
+                    >
                       {stepLabel}
                     </span>
                   )}
@@ -2138,7 +2031,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* Start/Stop + Sound + Freestyle (desktop only; mobile shows these in the input slot) */}
+      {/* Start/Stop + Settings gear (desktop only; mobile shows these in the input slot) */}
       {!mobile && (
         <div
           style={{
@@ -2171,50 +2064,26 @@ export default function App() {
             {running ? <StopIcon /> : <PlayIcon />}
             {running ? "Stop" : "Ride"}
           </button>
-        <button
-          onClick={() => setSound((s) => !s)}
-          title={sound ? "Mute" : "Unmute"}
-          style={{
-            width: 40,
-            height: 40,
-            border: "1px solid var(--border-light)",
-            background: "var(--bg-secondary)",
-            cursor: "pointer",
-            color: sound ? "var(--text-primary)" : "var(--text-muted)",
-            fontSize: 16,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            borderRadius: 4,
-          }}
-        >
-          {sound ? "♪" : "✕"}
-        </button>
-        <button
-          onClick={() => setFreestyle((f) => !f)}
-          disabled={running && !waitingForStart}
-          title={freestyle ? "Toggle Rhythm Mode" : "Toggle Freestyle Mode"}
-          style={{
-            border: "1px solid var(--border-light)",
-            background: freestyle
-              ? "var(--text-primary)"
-              : "var(--bg-secondary)",
-            color: freestyle ? "var(--bg-primary)" : "var(--text-secondary)",
-            cursor: running && !waitingForStart ? "not-allowed" : "pointer",
-            padding: "0 16px",
-            height: 40,
-            fontSize: 11,
-            fontFamily: "var(--font-display)",
-            fontWeight: 700,
-            textTransform: "uppercase",
-            letterSpacing: "0.08em",
-            transition: "all 0.15s",
-            opacity: running && !waitingForStart ? 0.6 : 1,
-            borderRadius: 4,
-          }}
-        >
-          {freestyle ? "Freestyle: ON" : "Freestyle: OFF"}
-        </button>
+          <button
+            onClick={openSettings}
+            className={settingsSeen ? undefined : "settings-pulse"}
+            title="Settings"
+            style={{
+              width: 44,
+              height: 44,
+              border: "1px solid var(--border-light)",
+              background: "var(--bg-secondary)",
+              cursor: "pointer",
+              color: "var(--text-secondary)",
+              fontSize: 20,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: 4,
+            }}
+          >
+            <GearIcon size={22} />
+          </button>
         </div>
       )}
 
@@ -2259,6 +2128,28 @@ export default function App() {
         speedMax={SPEED_MAX}
         redline={REDLINE}
         gameSpeed={reportSpeed}
+        rubberband={reportRubberband}
+      />
+
+      <SettingsPanel
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        comboKey={comboKey}
+        setComboKey={setComboKey}
+        cdMultiplier={cdMultiplier}
+        setCdMultiplier={setCdMultiplier}
+        gameSpeed={gameSpeed}
+        setGameSpeed={setGameSpeed}
+        freestyle={freestyle}
+        setFreestyle={setFreestyle}
+        sound={sound}
+        setSound={setSound}
+        theme={theme}
+        setTheme={setTheme}
+        rubberband={rubberband}
+        setRubberband={setRubberband}
+        running={running}
+        waitingForStart={waitingForStart}
       />
     </div>
   );
