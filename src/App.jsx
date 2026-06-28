@@ -962,13 +962,13 @@ export default function App() {
   };
   transitionRef.current = transition;
 
-  // main loop (pause-aware clock)
+  // Gamepad polling — on a fixed timer rather than rAF so controller input
+  // latency stays low even when the display refresh drops (e.g. mobile VRR
+  // throttling rAF to ~30Hz while idle). Reads only refs + stable setters.
   useEffect(() => {
-    const loop = () => {
-      const t = performance.now();
+    const pollGamepad = () => {
       const run = runRef.current;
 
-      // Poll Gamepad
       const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
       let gp = null;
       for (let i = 0; i < gamepads.length; i++) {
@@ -977,88 +977,96 @@ export default function App() {
           break;
         }
       }
+      if (!gp) return;
 
-      if (gp) {
-        const b = bindingsRef.current;
+      const b = bindingsRef.current;
 
-        // Controller Rebinding Check
-        if (
-          listenRef.current === "gpAttack" ||
-          listenRef.current === "gpDash"
-        ) {
-          for (let buttonIdx = 0; buttonIdx < gp.buttons.length; buttonIdx++) {
-            if (gp.buttons[buttonIdx]?.pressed) {
-              const action = listenRef.current;
-              const code = "GP" + buttonIdx;
-              const nb = { ...bindingsRef.current, [action]: code };
-              const other = action === "gpAttack" ? "gpDash" : "gpAttack";
-              if (nb[other] === code) nb[other] = bindingsRef.current[action];
-              setBindings(nb);
-              setListen(null);
-              break;
-            }
-          }
-        } else {
-          // Gameplay Polling
-          const getGpBtnIndex = (bindStr) => {
-            if (bindStr && bindStr.startsWith("GP")) {
-              return parseInt(bindStr.slice(2));
-            }
-            return -1;
-          };
-
-          const atkIdx = getGpBtnIndex(b.gpAttack);
-          const dashIdx = getGpBtnIndex(b.gpDash);
-
-          const atkPressed = atkIdx !== -1 && gp.buttons[atkIdx]?.pressed;
-          const dashPressed = dashIdx !== -1 && gp.buttons[dashIdx]?.pressed;
-
-          // Gamepad Attack button transition
-          if (atkPressed && !run.gpAtkPressed) {
-            run.gpAtkPressed = true;
-            if (!run.atk) {
-              run.atk = true;
-              setPressed((p) => ({ ...p, atk: true }));
-              transitionRef.current("atk-down");
-            }
-          } else if (!atkPressed && run.gpAtkPressed) {
-            run.gpAtkPressed = false;
-            const kbCode = b.attack;
-            const kbPressed = run.pressed.has(kbCode);
-            if (!kbPressed && run.atk) {
-              run.atk = false;
-              setPressed((p) => ({ ...p, atk: false }));
-              transitionRef.current("atk-up");
-            }
-          }
-
-          // Gamepad Dash button transition
-          if (dashPressed && !run.gpDashPressed) {
-            run.gpDashPressed = true;
-            if (!run.dash) {
-              run.dash = true;
-              setPressed((p) => ({ ...p, dash: true }));
-              transitionRef.current("dash-down");
-            }
-          } else if (!dashPressed && run.gpDashPressed) {
-            run.gpDashPressed = false;
-            const kbCode = b.dash;
-            const kbPressed =
-              run.pressed.has(kbCode) ||
-              ((kbCode === "ShiftLeft" ||
-                kbCode === "ShiftRight" ||
-                kbCode === "M2") &&
-                (run.pressed.has("ShiftLeft") ||
-                  run.pressed.has("ShiftRight") ||
-                  run.pressed.has("M2")));
-            if (!kbPressed && run.dash) {
-              run.dash = false;
-              setPressed((p) => ({ ...p, dash: false }));
-              transitionRef.current("dash-up");
-            }
+      // Controller Rebinding Check
+      if (listenRef.current === "gpAttack" || listenRef.current === "gpDash") {
+        for (let buttonIdx = 0; buttonIdx < gp.buttons.length; buttonIdx++) {
+          if (gp.buttons[buttonIdx]?.pressed) {
+            const action = listenRef.current;
+            const code = "GP" + buttonIdx;
+            const nb = { ...bindingsRef.current, [action]: code };
+            const other = action === "gpAttack" ? "gpDash" : "gpAttack";
+            if (nb[other] === code) nb[other] = bindingsRef.current[action];
+            setBindings(nb);
+            setListen(null);
+            break;
           }
         }
+        return;
       }
+
+      // Gameplay Polling
+      const getGpBtnIndex = (bindStr) => {
+        if (bindStr && bindStr.startsWith("GP")) {
+          return parseInt(bindStr.slice(2));
+        }
+        return -1;
+      };
+
+      const atkIdx = getGpBtnIndex(b.gpAttack);
+      const dashIdx = getGpBtnIndex(b.gpDash);
+
+      const atkPressed = atkIdx !== -1 && gp.buttons[atkIdx]?.pressed;
+      const dashPressed = dashIdx !== -1 && gp.buttons[dashIdx]?.pressed;
+
+      // Gamepad Attack button transition
+      if (atkPressed && !run.gpAtkPressed) {
+        run.gpAtkPressed = true;
+        if (!run.atk) {
+          run.atk = true;
+          setPressed((p) => ({ ...p, atk: true }));
+          transitionRef.current("atk-down");
+        }
+      } else if (!atkPressed && run.gpAtkPressed) {
+        run.gpAtkPressed = false;
+        const kbCode = b.attack;
+        const kbPressed = run.pressed.has(kbCode);
+        if (!kbPressed && run.atk) {
+          run.atk = false;
+          setPressed((p) => ({ ...p, atk: false }));
+          transitionRef.current("atk-up");
+        }
+      }
+
+      // Gamepad Dash button transition
+      if (dashPressed && !run.gpDashPressed) {
+        run.gpDashPressed = true;
+        if (!run.dash) {
+          run.dash = true;
+          setPressed((p) => ({ ...p, dash: true }));
+          transitionRef.current("dash-down");
+        }
+      } else if (!dashPressed && run.gpDashPressed) {
+        run.gpDashPressed = false;
+        const kbCode = b.dash;
+        const kbPressed =
+          run.pressed.has(kbCode) ||
+          ((kbCode === "ShiftLeft" ||
+            kbCode === "ShiftRight" ||
+            kbCode === "M2") &&
+            (run.pressed.has("ShiftLeft") ||
+              run.pressed.has("ShiftRight") ||
+              run.pressed.has("M2")));
+        if (!kbPressed && run.dash) {
+          run.dash = false;
+          setPressed((p) => ({ ...p, dash: false }));
+          transitionRef.current("dash-up");
+        }
+      }
+    };
+
+    const id = setInterval(pollGamepad, 4);
+    return () => clearInterval(id);
+  }, []);
+
+  // main loop (pause-aware clock)
+  useEffect(() => {
+    const loop = () => {
+      const t = performance.now();
+      const run = runRef.current;
 
       if (run.running) {
         if (run.lastT == null) run.lastT = t;
