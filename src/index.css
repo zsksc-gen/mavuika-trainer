@@ -18,8 +18,31 @@
     --status-online: #2e7d4f;
     --status-offline: #d23b1f;
     --font-display: "Oswald", "Arial Narrow", sans-serif;
-    --font-body:
-        "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-body: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/*Dark theme */
+:root[data-theme="dark"] {
+    --bg-primary: #0f0f11;
+    --bg-secondary: #17171a;
+    --bg-card: #1c1c20;
+    --text-primary: #f2f2f2;
+    --text-secondary: #b5b5b5;
+    --text-muted: #777777;
+    --accent-indigo: #ededed;
+    --accent-gold: #e6b450;
+    --accent-gold-light: #9a9a9a;
+    --border-light: #2e2e34;
+    --border-subtle: #232327;
+    --severity-critical: #e6492d;
+    --severity-high: #e6492d;
+    --severity-medium: #999999;
+    --severity-low: #3ea96a;
+    --status-online: #3ea96a;
+    --status-offline: #e6492d;
+}
+:root[data-theme="dark"] body {
+    color-scheme: dark;
 }
 * {
     box-sizing: border-box;
@@ -39,7 +62,7 @@ body {
     background: var(--bg-primary);
     -webkit-font-smoothing: antialiased;
     overflow-y: auto;
-    zoom: 1.0;
+    zoom: 1;
 }
 
 @media (min-width: 1600px) and (min-height: 850px) {
@@ -113,12 +136,28 @@ h3 {
     font-weight: 600;
     letter-spacing: 0.02em;
 }
-.island-markdown-content h1 { font-size: 20px; border-bottom: 1px solid var(--border-light); padding-bottom: 8px; }
-.island-markdown-content h2 { font-size: 16px; }
-.island-markdown-content h3 { font-size: 14px; }
-.island-markdown-content p { margin-bottom: 12px; }
-.island-markdown-content a { color: #0969da; text-decoration: none; font-weight: 500; }
-.island-markdown-content a:hover { text-decoration: underline; }
+.island-markdown-content h1 {
+    font-size: 20px;
+    border-bottom: 1px solid var(--border-light);
+    padding-bottom: 8px;
+}
+.island-markdown-content h2 {
+    font-size: 16px;
+}
+.island-markdown-content h3 {
+    font-size: 14px;
+}
+.island-markdown-content p {
+    margin-bottom: 12px;
+}
+.island-markdown-content a {
+    color: #0969da;
+    text-decoration: none;
+    font-weight: 500;
+}
+.island-markdown-content a:hover {
+    text-decoration: underline;
+}
 .island-markdown-content ul {
     list-style-type: disc;
     padding-left: 20px;
@@ -163,22 +202,44 @@ h3 {
 
 /* Lane bars style */
 .vlane-bar {
-  box-shadow: none;
-  font-family: var(--font-body);
+    box-shadow: none;
+    font-family: var(--font-body);
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: scale(0.97) translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
+    from {
+        opacity: 0;
+        transform: scale(0.97) translateY(4px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
 }
 
 /* Specific to overlay transitions */
 div[style*="position: fixed"][style*="inset: 0"] {
-  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* First-visit hint: gently pulse the settings gear until it's opened once. */
+@keyframes settingsPulse {
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgba(230, 180, 80, 0);
+        transform: scale(1);
+    }
+    50% {
+        box-shadow: 0 0 0 6px rgba(230, 180, 80, 0.18);
+        transform: scale(1.08);
+    }
+}
+.settings-pulse {
+    animation: settingsPulse 2s ease-in-out infinite;
+    border-color: var(--accent-gold) !important;
+}
+@media (prefers-reduced-motion: reduce) {
+    .settings-pulse {
+        animation: none;
+    }
 }

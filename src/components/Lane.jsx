@@ -3,7 +3,7 @@ import { VB, GRADE_COLOR } from '../core/tokens';
 
 const PX_PER_MS = 0.26;
 
-export default function Lane({ nowRef, rate, judgeFlash, repLen, repBars, freestyle }) {
+export default function Lane({ nowRef, rate, judgeFlash, repLen, repBars, freestyle, offsetRef, barEventMap }) {
   const REP_LEN = repLen;
   const REP_BARS = repBars;
   const wrapRef = useRef(null);
@@ -30,11 +30,17 @@ export default function Lane({ nowRef, rate, judgeFlash, repLen, repBars, freest
         const curRep = Math.max(0, Math.floor((now * rate) / REP_LEN));
         const out = [];
         const maxRepToRender = freestyle ? curRep : (curRep + 6);
+        // Rubberband offsets apply only to the single rep currently being hit.
+        const offState = offsetRef && offsetRef.current;
         for (let r = curRep - 1; r <= maxRepToRender; r++) {
           if (r < 0) continue;
           const base = r * REP_LEN;
+          const offs = offState && offState.rep === r ? offState.offsets : null;
           REP_BARS.forEach((b, bi) => {
-            const rs = (base + b.start) / rate, re = (base + b.end) / rate;
+            const map = barEventMap && barEventMap[bi];
+            const offStart = offs && map ? offs[map.startIdx] || 0 : 0;
+            const offEnd = offs && map ? offs[map.endIdx] || 0 : 0;
+            const rs = (base + b.start + offStart) / rate, re = (base + b.end + offEnd) / rate;
             const x = judgeX + (rs - now) * PX_PER_MS;
             const bw = Math.max(8, (re - rs) * PX_PER_MS);
             if (x + bw < -60 || x > w + 60) return;
@@ -95,7 +101,7 @@ export default function Lane({ nowRef, rate, judgeFlash, repLen, repBars, freest
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [w, rate, REP_LEN, REP_BARS, freestyle]);
+  }, [w, rate, REP_LEN, REP_BARS, freestyle, barEventMap]);
 
   const judgeX = Math.min(180, w * 0.22);
   const flashColor = judgeFlash ? GRADE_COLOR[judgeFlash.grade] : 'var(--accent-gold)';
