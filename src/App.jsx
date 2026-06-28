@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { VULCAN_CONFIG, COMBOS } from "./core/config";
 import { clamp, rawCode, codeLabel, loadStore, saveStore } from "./core/utils";
 import { GRADE_SOUND, blip, initAudio } from "./core/audio";
@@ -654,6 +654,22 @@ export default function App() {
   const REP_LEN = activeCombo.repLen;
   const REP_EVENTS = activeCombo.repEvents;
 
+  // Maps each timeline bar to the rep-relative event indices that drive its
+  // start (down) and end (up), so the Lane can apply rubberband offsets.
+  // Matching by action + canonical time disambiguates repeated lanes.
+  const barEventMap = useMemo(
+    () =>
+      activeCombo.repBars.map((b) => ({
+        startIdx: activeCombo.repEvents.findIndex(
+          (e) => e.action === `${b.lane}-down` && e.t === b.start,
+        ),
+        endIdx: activeCombo.repEvents.findIndex(
+          (e) => e.action === `${b.lane}-up` && e.t === b.end,
+        ),
+      })),
+    [comboKey, cdMultiplier],
+  );
+
   const { SPEED_MAX, REDLINE, SPEED_DELTA, DECAY_PER_SEC, TOL } = VULCAN_CONFIG;
   const RATE = gameSpeed;
   const WIN = TOL.normal;
@@ -680,6 +696,10 @@ export default function App() {
   });
   const lastRef = useRef(null);
   const cdRef = useRef(0);
+  // Rubberbanding mirror for the Lane: accumulated game-ms offset per
+  // rep-relative event index, for the single rep currently being hit.
+  // `rep` is the absolute rep number those offsets belong to; -1 = none yet.
+  const laneOffsetRef = useRef({ rep: -1, offsets: [] });
   const rafRef = useRef(null);
   const bindingsRef = useRef(bindings);
   const soundRef = useRef(sound);
@@ -940,16 +960,27 @@ export default function App() {
               ? "early"
               : "late";
 
-      // Rubberbanding: if this is the start of a CD block (atk-down at index 0 or 4 of rep)
-      // and it was hit within the acceptable range (perfect/good), shift the subsequent inputs
-      const isAnchor = eventInRep === 0 || eventInRep === 4;
-      if (isAnchor && (g === "perfect" || g === "good")) {
-        const anchorIdx = run.nextIdx;
-        for (let i = 1; i <= 3; i++) {
-          if (run.events[anchorIdx + i]) {
-            run.events[anchorIdx + i].t += delta * RATE;
-          }
-        }
+      // Rubberbanding: re-anchor every later event in this rep to the player's
+      // actual input time, so the rest of the combo follows their real pace.
+      // Any matched hit shifts its successors by the raw signed delta; the hit
+      // itself still keeps its own grade/penalty. miss/wrong never reach here
+      // (they don't match the expected action and don't advance nextIdx), and
+      // drift is self-contained per rep — the next rep is generated canonical.
+      const repStartIdx = run.nextIdx - eventInRep;
+      const curRep = Math.floor(run.nextIdx / REP_EVENTS.length);
+      // Lazily reset the Lane mirror when we've entered a new rep.
+      if (laneOffsetRef.current.rep !== curRep) {
+        laneOffsetRef.current = {
+          rep: curRep,
+          offsets: new Array(REP_EVENTS.length).fill(0),
+        };
+      }
+      const shift = delta * RATE; // event times are stored in game-time
+      const offsets = laneOffsetRef.current.offsets;
+      for (let i = eventInRep + 1; i < REP_EVENTS.length; i++) {
+        const evIdx = repStartIdx + i;
+        if (run.events[evIdx]) run.events[evIdx].t += shift;
+        offsets[i] += shift;
       }
 
       // Log the offset in game-time ms (delta is real-time) so the readout is
@@ -1111,6 +1142,7 @@ export default function App() {
               run.events = [];
               run.genRep = 0;
               run.nextIdx = 0;
+              laneOffsetRef.current = { rep: -1, offsets: [] };
               ensureEvents(0);
               run.now = 0;
               nowRef.current = 0;
@@ -1157,6 +1189,7 @@ export default function App() {
     run.gradesLog = [];
     run.speedHistory = [{ time: 0, speed: 0 }];
     run.lastRecordTime = 0;
+    laneOffsetRef.current = { rep: -1, offsets: [] };
 
     run.now = 0;
     run.startPerf = 0;
@@ -1628,6 +1661,8 @@ export default function App() {
             repLen={REP_LEN}
             repBars={activeCombo.repBars}
             freestyle={freestyle}
+            offsetRef={laneOffsetRef}
+            barEventMap={barEventMap}
           />
           {running && countdown > 0 && (
             <div
