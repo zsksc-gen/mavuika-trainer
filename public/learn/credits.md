@@ -1,7 +1,8 @@
 # Credits
 
 * **Website and Smuggling the combo from China**: @zsksc (Discord; [Youtube](https://www.youtube.com/@zsksc)) 
-
+* **My muse and I wish you all the best**: @Phanabelle
+* Hello Honey
 * **Timing and Combo Discovery**: 
   * Bilibili: [流眄呀](https://space.bilibili.com/407686733) ✮ 
   * Bilibili: [eva935](https://space.bilibili.com/3461576111688003/) ✮
